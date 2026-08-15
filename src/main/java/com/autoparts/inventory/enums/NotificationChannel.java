@@ -1,5 +1,5 @@
 package com.autoparts.inventory.enums;
 
 public enum NotificationChannel {
-    WHATSAPP, PUSH, IN_APP
+    WHATSAPP, SMS, PUSH, IN_APP
 }

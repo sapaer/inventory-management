@@ -2,6 +2,7 @@ package com.autoparts.inventory.service;
 
 import com.autoparts.inventory.api.AppException;
 import com.autoparts.inventory.client.FcmClient;
+import com.autoparts.inventory.client.SmsClient;
 import com.autoparts.inventory.client.WhatsAppClient;
 import com.autoparts.inventory.enums.NotificationChannel;
 import com.autoparts.inventory.enums.NotificationType;
@@ -29,17 +30,20 @@ public class NotificationService {
     private final NotificationRepository notifications;
     private final UserRepository users;
     private final WhatsAppClient whatsapp;
+    private final SmsClient sms;
     private final FcmClient fcm;
 
     public NotificationService(
             NotificationRepository notifications,
             UserRepository users,
             WhatsAppClient whatsapp,
+            SmsClient sms,
             FcmClient fcm
     ) {
         this.notifications = notifications;
         this.users = users;
         this.whatsapp = whatsapp;
+        this.sms = sms;
         this.fcm = fcm;
     }
 
@@ -52,10 +56,23 @@ public class NotificationService {
         if (user == null) {
             return;
         }
+        boolean whatsappSent = false;
+        boolean smsSent = false;
         try {
-            whatsapp.sendLowStockAlert(user.getPhone(), item.getPartName(), item.getQuantity());
+            if (whatsapp.configured()) {
+                whatsapp.sendLowStockAlert(user.getPhone(), item.getPartName(), item.getQuantity());
+                whatsappSent = true;
+            }
         } catch (Exception ex) {
             log.error("low stock whatsapp failed itemId={}", item.getId(), ex);
+        }
+        if (sms.configured()) {
+            try {
+                sms.sendLowStockAlert(user.getPhone(), item.getPartName(), item.getQuantity());
+                smsSent = true;
+            } catch (Exception ex) {
+                log.error("low stock sms failed itemId={}", item.getId(), ex);
+            }
         }
         fcm.sendLowStockPush(user.getId().toString(), item.getPartName(), item.getQuantity());
         Notification n = new Notification();
@@ -63,7 +80,9 @@ public class NotificationService {
         n.setType(NotificationType.LOW_STOCK);
         n.setTitle("Low stock alert");
         n.setBody(item.getPartName() + " — only " + item.getQuantity() + " units left");
-        n.setChannel(NotificationChannel.WHATSAPP);
+        n.setChannel(whatsappSent ? NotificationChannel.WHATSAPP
+                : smsSent ? NotificationChannel.SMS
+                : NotificationChannel.IN_APP);
         n.setData(Map.of("item_id", item.getId().toString(), "qty_remaining", item.getQuantity()));
         n.setSentAt(Instant.now());
         notifications.save(n);

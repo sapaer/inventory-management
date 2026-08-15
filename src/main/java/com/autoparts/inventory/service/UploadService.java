@@ -27,6 +27,11 @@ public class UploadService {
         if (!"image/jpeg".equals(contentType) && !"image/png".equals(contentType)) {
             throw AppException.badRequest("INVALID_FILE_TYPE", "Only JPEG and PNG images are supported");
         }
+        if (aws.accessKey() == null || aws.accessKey().isBlank()
+                || aws.secretKey() == null || aws.secretKey().isBlank()
+                || "local".equals(aws.accessKey())) {
+            throw AppException.badRequest("AWS_NOT_CONFIGURED", "S3 upload is not configured");
+        }
         String ext = "image/png".equals(contentType) ? ".png" : ".jpg";
         String key = "parts/" + userId + "/" + UUID.randomUUID() + ext;
         try (S3Presigner presigner = S3Presigner.builder()

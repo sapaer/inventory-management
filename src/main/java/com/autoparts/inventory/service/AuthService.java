@@ -74,7 +74,8 @@ public class AuthService {
             otp.sendOtp(phone, code);
         } catch (Exception ex) {
             log.error("otp delivery failed phone={}", phone, ex);
-            throw AppException.badRequest("OTP_DELIVERY_FAILED", "Could not send OTP. Please try again.");
+            String detail = ex.getMessage() == null ? "Please try again." : ex.getMessage();
+            throw AppException.badRequest("OTP_DELIVERY_FAILED", "Could not send OTP. " + detail);
         }
         cache.set("otp:" + phone, code, Duration.ofSeconds(OTP_EXPIRY_SECONDS));
         cache.incr(attemptsKey);

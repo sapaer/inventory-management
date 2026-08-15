@@ -19,25 +19,32 @@ import java.util.Map;
 public class WhatsAppClient {
     private static final Logger log = LoggerFactory.getLogger(WhatsAppClient.class);
     private final AppProperties.WhatsApp cfg;
+    private final TwilioMessagingClient twilio;
     private final RestTemplate http = new RestTemplate();
 
-    public WhatsAppClient(AppProperties props) {
+    public WhatsAppClient(AppProperties props, TwilioMessagingClient twilio) {
         this.cfg = props.whatsapp();
+        this.twilio = twilio;
     }
 
     public boolean configured() {
-        return cfg.phoneNumberId() != null && !cfg.phoneNumberId().isBlank()
-                && cfg.accessToken() != null && !cfg.accessToken().isBlank();
+        return twilio.whatsappConfigured() || metaConfigured();
     }
 
     public void sendOtp(String phone, String otp) {
+        String body = "Your inventory login OTP is " + otp + ". It expires in 5 minutes.";
+        if (twilio.whatsappConfigured()) {
+            String contentSid = twilio.otpContentSid();
+            twilio.sendWhatsApp(phone, body, contentSid, null);
+            return;
+        }
         List<Map<String, String>> otpParam = List.of(Map.of("type", "text", "text", otp));
         Map<String, Object> button = new LinkedHashMap<>();
         button.put("type", "button");
         button.put("sub_type", "url");
         button.put("index", "0");
         button.put("parameters", otpParam);
-        sendTemplate(phone, "otp_delivery", otpParam, button);
+        sendMetaTemplate(phone, "otp_delivery", otpParam, button);
     }
 
     public void sendLowStockAlert(String phone, String partName, int qty) {
@@ -45,15 +52,23 @@ public class WhatsAppClient {
             log.warn("whatsapp credentials missing, skipping low stock alert");
             return;
         }
-        sendTemplate(phone, "low_stock_alert", List.of(
+        String body = partName + " is low on stock — only " + qty + " units left.";
+        if (twilio.whatsappConfigured()) {
+            twilio.sendWhatsApp(phone, body, twilio.lowStockContentSid(), Map.of(
+                    "1", partName,
+                    "2", String.valueOf(qty)
+            ));
+            return;
+        }
+        sendMetaTemplate(phone, "low_stock_alert", List.of(
                 Map.of("type", "text", "text", partName),
                 Map.of("type", "text", "text", String.valueOf(qty))
         ));
     }
 
     @SafeVarargs
-    private void sendTemplate(String phone, String templateName, List<Map<String, String>> params, Map<String, Object>... extra) {
-        if (!configured()) {
+    private void sendMetaTemplate(String phone, String templateName, List<Map<String, String>> params, Map<String, Object>... extra) {
+        if (!metaConfigured()) {
             throw new IllegalStateException("whatsapp not configured");
         }
         List<Map<String, Object>> components = new ArrayList<>();
@@ -80,5 +95,13 @@ public class WhatsAppClient {
             log.error("whatsapp send failed status={} template={} body={}", ex.getStatusCode().value(), templateName, ex.getResponseBodyAsString());
             throw new IllegalStateException("whatsapp status " + ex.getStatusCode().value() + ": " + ex.getResponseBodyAsString());
         }
+    }
+
+    private boolean metaConfigured() {
+        return notBlank(cfg.phoneNumberId()) && notBlank(cfg.accessToken());
+    }
+
+    private static boolean notBlank(String v) {
+        return v != null && !v.isBlank();
     }
 }

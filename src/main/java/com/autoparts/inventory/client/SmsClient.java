@@ -18,37 +18,42 @@ import java.util.Map;
 public class SmsClient {
     private static final Logger log = LoggerFactory.getLogger(SmsClient.class);
     private final AppProperties.Sms cfg;
+    private final TwilioMessagingClient twilio;
     private final RestTemplate http = new RestTemplate();
 
-    public SmsClient(AppProperties props) {
+    public SmsClient(AppProperties props, TwilioMessagingClient twilio) {
         this.cfg = props.sms();
+        this.twilio = twilio;
     }
 
     public boolean configured() {
-        String provider = provider();
-        if ("msg91".equals(provider)) {
-            return notBlank(cfg.authKey());
+        if (useTwilio()) {
+            return twilio.smsConfigured();
         }
-        if ("twilio".equals(provider)) {
-            return notBlank(cfg.accountSid()) && notBlank(cfg.authToken()) && notBlank(cfg.fromNumber());
-        }
-        return false;
+        return notBlank(cfg.authKey());
     }
 
     public void sendOtp(String phone, String otp) {
+        send(phone, "Your inventory login OTP is " + otp + ". It expires in 5 minutes.", otp);
+    }
+
+    public void sendLowStockAlert(String phone, String partName, int qty) {
+        send(phone, partName + " is low on stock — only " + qty + " units left.", null);
+    }
+
+    private void send(String phone, String msg, String otp) {
         if (!configured()) {
             throw new IllegalStateException("sms not configured");
         }
-        String msg = "Your inventory login OTP is " + otp + ". It expires in 5 minutes.";
-        if ("twilio".equals(provider())) {
-            sendTwilio(phone, msg);
-        } else {
-            sendMsg91(phone, msg, otp);
+        if (useTwilio()) {
+            twilio.sendSms(phone, msg);
+            return;
         }
+        sendMsg91(phone, msg, otp);
     }
 
     private void sendMsg91(String phone, String msg, String otp) {
-        if (!notBlank(cfg.senderId())) {
+        if (!notBlank(cfg.senderId()) || otp == null) {
             String url = UriComponentsBuilder.fromHttpUrl("https://api.msg91.com/api/sendhttp.php")
                     .queryParam("authkey", cfg.authKey())
                     .queryParam("mobiles", "91" + phone)
@@ -70,15 +75,6 @@ public class SmsClient {
         exchange("https://control.msg91.com/api/v5/flow/", new HttpEntity<>(payload, headers));
     }
 
-    private void sendTwilio(String phone, String msg) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        headers.setBasicAuth(cfg.accountSid(), cfg.authToken());
-        String form = "To=%2B91" + phone + "&From=" + cfg.fromNumber() + "&Body=" + java.net.URLEncoder.encode(msg, java.nio.charset.StandardCharsets.UTF_8);
-        String url = "https://api.twilio.com/2010-04-01/Accounts/" + cfg.accountSid() + "/Messages.json";
-        exchange(url, new HttpEntity<>(form, headers));
-    }
-
     private void exchange(String url, HttpEntity<?> entity) {
         try {
             if (entity.getBody() == null) {
@@ -86,15 +82,19 @@ public class SmsClient {
             } else {
                 http.postForEntity(url, entity, String.class);
             }
-            log.info("sms otp sent provider={}", provider());
+            log.info("sms sent provider={}", provider());
         } catch (RestClientResponseException ex) {
             log.error("sms send failed provider={} status={} body={}", provider(), ex.getStatusCode().value(), ex.getResponseBodyAsString());
             throw new IllegalStateException("sms status " + ex.getStatusCode().value() + ": " + ex.getResponseBodyAsString());
         }
     }
 
+    private boolean useTwilio() {
+        return !"msg91".equals(provider());
+    }
+
     private String provider() {
-        return cfg.provider() == null ? "msg91" : cfg.provider().trim().toLowerCase();
+        return cfg.provider() == null || cfg.provider().isBlank() ? "twilio" : cfg.provider().trim().toLowerCase();
     }
 
     private static boolean notBlank(String v) {

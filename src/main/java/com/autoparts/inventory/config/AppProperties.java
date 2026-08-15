@@ -8,7 +8,8 @@ public record AppProperties(
         Jwt jwt,
         Aws aws,
         WhatsApp whatsapp,
-        Sms sms
+        Sms sms,
+        Twilio twilio
 ) {
     public record Jwt(String secret, int accessExpiryHours, int refreshExpiryDays) {}
 
@@ -16,12 +17,14 @@ public record AppProperties(
 
     public record WhatsApp(String apiUrl, String phoneNumberId, String accessToken) {}
 
-    public record Sms(
-            String provider,
-            String authKey,
-            String senderId,
+    public record Sms(String provider, String authKey, String senderId) {}
+
+    public record Twilio(
             String accountSid,
             String authToken,
-            String fromNumber
+            String fromNumber,
+            String whatsappFrom,
+            String otpContentSid,
+            String lowStockContentSid
     ) {}
 }

@@ -35,7 +35,8 @@ class AuthServiceTest {
                 new AppProperties.Jwt("QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=", 24, 30),
                 new AppProperties.Aws("b", "ap-south-1", "k", "s", "http://localhost"),
                 new AppProperties.WhatsApp("https://graph.facebook.com/v25.0", "", ""),
-                new AppProperties.Sms("msg91", "", "", "", "", "")
+                new AppProperties.Sms("twilio", "", ""),
+                new AppProperties.Twilio("", "", "", "", "", "")
         );
         AuthService svc = new AuthService(users, locations, vehicleCategories, cache, jwt, otp, props);
         doThrow(new IllegalStateException("no otp delivery channel available")).when(otp).sendOtp(anyString(), anyString());
