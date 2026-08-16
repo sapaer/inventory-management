@@ -176,6 +176,33 @@ public class AuthService {
         return toUserDto(users.save(user));
     }
 
+    private Map<String, Object> toUserDto(User user) {
+        Map<String, Object> dto = new LinkedHashMap<>();
+        dto.put("id", user.getId());
+        dto.put("phone", user.getPhone());
+        dto.put("name", user.getName());
+        dto.put("shopName", user.getShopName());
+        dto.put("email", user.getEmail());
+        dto.put("businessType", user.getBusinessType());
+        dto.put("onboardingStatus", user.getOnboardingStatus());
+        locations.findByUserIdAndPrimaryTrue(user.getId()).ifPresent(loc -> {
+            dto.put("address", loc.getAddress());
+            dto.put("area", loc.getArea());
+            dto.put("city", loc.getCity());
+            dto.put("state", loc.getState());
+            dto.put("pincode", loc.getPincode());
+            dto.put("geoLat", loc.getGeoLat());
+            dto.put("geoLng", loc.getGeoLng());
+        });
+        dto.put(
+                "vehicleCategories",
+                vehicleCategories.findByUserId(user.getId()).stream()
+                        .map(row -> row.getCategory().name())
+                        .toList()
+        );
+        return dto;
+    }
+
     private void upsertLocation(UUID userId, ProfileUpdateRequest dto) {
         if (dto.address() == null && dto.area() == null && dto.city() == null
                 && dto.pincode() == null && dto.geoLat() == null && dto.geoLng() == null) {
@@ -207,15 +234,5 @@ public class AuthService {
         out.put("user", toUserDto(user));
         out.put("isNewUser", isNewUser);
         return out;
-    }
-
-    private static Map<String, Object> toUserDto(User user) {
-        Map<String, Object> dto = new LinkedHashMap<>();
-        dto.put("id", user.getId());
-        dto.put("phone", user.getPhone());
-        dto.put("name", user.getName());
-        dto.put("shopName", user.getShopName());
-        dto.put("onboardingStatus", user.getOnboardingStatus());
-        return dto;
     }
 }

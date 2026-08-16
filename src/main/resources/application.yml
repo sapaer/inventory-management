@@ -51,3 +51,5 @@ app:
     whatsapp-from: ${TWILIO_WHATSAPP_FROM:whatsapp:+14155238886}
     otp-content-sid: ${TWILIO_OTP_CONTENT_SID:}
     low-stock-content-sid: ${TWILIO_LOW_STOCK_CONTENT_SID:}
+  google:
+    places-api-key: ${GOOGLE_PLACES_API_KEY:}

@@ -9,7 +9,8 @@ public record AppProperties(
         Aws aws,
         WhatsApp whatsapp,
         Sms sms,
-        Twilio twilio
+        Twilio twilio,
+        Google google
 ) {
     public record Jwt(String secret, int accessExpiryHours, int refreshExpiryDays) {}
 
@@ -27,4 +28,6 @@ public record AppProperties(
             String otpContentSid,
             String lowStockContentSid
     ) {}
+
+    public record Google(String placesApiKey) {}
 }

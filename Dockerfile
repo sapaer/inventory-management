@@ -1,11 +1,11 @@
-FROM golang:1.23-alpine AS build
+FROM eclipse-temurin:17-jdk AS build
 WORKDIR /app
-COPY . .
-RUN go mod download && CGO_ENABLED=0 go build -o /server ./cmd/server
+COPY pom.xml .
+COPY src ./src
+RUN apt-get update && apt-get install -y maven && mvn -q -DskipTests package
 
-FROM alpine:3.20
+FROM eclipse-temurin:17-jre
 WORKDIR /app
-COPY --from=build /server /server
-COPY migrations ./migrations
+COPY --from=build /app/target/*.jar /app/app.jar
 EXPOSE 8080
-CMD ["/server"]
+ENTRYPOINT ["java","-jar","/app/app.jar"]

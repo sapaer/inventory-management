@@ -1,10 +1,10 @@
-.PHONY: run test tidy
+.PHONY: run test package
 
 run:
-	go run ./cmd/server
+	mvn spring-boot:run
 
 test:
-	go test ./...
+	mvn test
 
-tidy:
-	go mod tidy
+package:
+	mvn -DskipTests package

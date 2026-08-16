@@ -1,0 +1,36 @@
+# Binaries
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+vendor/
+coverage.out
+*.test
+
+# Env / secrets
+.env
+.env.local
+*.pem
+firebase-credentials.json
+
+# Java
+target/
+*.class
+*.jar
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Java leftovers (removed)
+target/
+*.class
+*.jar
