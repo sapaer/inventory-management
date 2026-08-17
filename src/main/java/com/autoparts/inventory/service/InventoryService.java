@@ -34,7 +34,7 @@ public class InventoryService {
         this.notifier = notifier;
     }
 
-    public List<Map<String, Object>> list(UUID userId, String q, VehicleCategory vehicle, String status) {
+    public List<Map<String, Object>> list(UUID userId, String q, List<VehicleCategory> vehicles, String status) {
         List<InventoryItem> found;
         if (q != null && !q.isBlank()) {
             found = items.fullTextSearch(userId, q);
@@ -43,7 +43,7 @@ public class InventoryService {
         }
         List<Map<String, Object>> out = new ArrayList<>();
         for (InventoryItem item : found) {
-            if (vehicle != null && item.getVehicleCategory() != vehicle) {
+            if (vehicles != null && !vehicles.isEmpty() && !vehicles.contains(item.getVehicleCategory())) {
                 continue;
             }
             if (!matchesStatus(item, status)) {

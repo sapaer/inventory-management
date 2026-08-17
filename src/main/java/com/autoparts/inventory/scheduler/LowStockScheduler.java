@@ -3,7 +3,7 @@ package com.autoparts.inventory.scheduler;
 import com.autoparts.inventory.entity.InventoryItem;
 import com.autoparts.inventory.repository.InventoryItemRepository;
 import com.autoparts.inventory.service.NotificationService;
-import com.autoparts.inventory.store.RedisCache;
+import com.autoparts.inventory.store.AppKvStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -17,9 +17,9 @@ public class LowStockScheduler {
     private static final Logger log = LoggerFactory.getLogger(LowStockScheduler.class);
     private final InventoryItemRepository items;
     private final NotificationService notifications;
-    private final RedisCache cache;
+    private final AppKvStore cache;
 
-    public LowStockScheduler(InventoryItemRepository items, NotificationService notifications, RedisCache cache) {
+    public LowStockScheduler(InventoryItemRepository items, NotificationService notifications, AppKvStore cache) {
         this.items = items;
         this.notifications = notifications;
         this.cache = cache;

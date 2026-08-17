@@ -12,7 +12,7 @@ import com.autoparts.inventory.repository.UserLocationRepository;
 import com.autoparts.inventory.repository.UserRepository;
 import com.autoparts.inventory.repository.UserVehicleCategoryRepository;
 import com.autoparts.inventory.security.JwtService;
-import com.autoparts.inventory.store.RedisCache;
+import com.autoparts.inventory.store.AppKvStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -37,7 +37,7 @@ public class AuthService {
     private final UserRepository users;
     private final UserLocationRepository locations;
     private final UserVehicleCategoryRepository vehicleCategories;
-    private final RedisCache cache;
+    private final AppKvStore cache;
     private final JwtService jwt;
     private final OtpDispatcher otp;
     private final AppProperties props;
@@ -46,7 +46,7 @@ public class AuthService {
             UserRepository users,
             UserLocationRepository locations,
             UserVehicleCategoryRepository vehicleCategories,
-            RedisCache cache,
+            AppKvStore cache,
             JwtService jwt,
             OtpDispatcher otp,
             AppProperties props
@@ -69,18 +69,28 @@ public class AuthService {
                 throw AppException.tooManyRequests("OTP_MAX_ATTEMPTS", "Too many OTP requests. Try again in 10 minutes.");
             }
         }
-        String code = "%06d".formatted(RANDOM.nextInt(1_000_000));
-        try {
-            otp.sendOtp(phone, code);
-        } catch (Exception ex) {
-            log.error("otp delivery failed phone={}", phone, ex);
-            String detail = ex.getMessage() == null ? "Please try again." : ex.getMessage();
-            throw AppException.badRequest("OTP_DELIVERY_FAILED", "Could not send OTP. " + detail);
+
+        boolean bypass = props.devOtpBypass();
+        String code = bypass
+                ? props.effectiveDevOtpCode()
+                : "%06d".formatted(RANDOM.nextInt(1_000_000));
+
+        if (!bypass) {
+            try {
+                otp.sendOtp(phone, code);
+            } catch (Exception ex) {
+                log.error("otp delivery failed phone={}", phone, ex);
+                String detail = ex.getMessage() == null ? "Please try again." : ex.getMessage();
+                throw AppException.badRequest("OTP_DELIVERY_FAILED", "Could not send OTP. " + detail);
+            }
         }
+
         cache.set("otp:" + phone, code, Duration.ofSeconds(OTP_EXPIRY_SECONDS));
         cache.incr(attemptsKey);
         cache.expire(attemptsKey, Duration.ofSeconds(ATTEMPT_WINDOW_SECONDS));
-        if (props.logOtp()) {
+        if (bypass) {
+            log.warn("DEV OTP bypass active phone={} otp={} (delivery skipped)", phone, code);
+        } else if (props.logOtp()) {
             log.info("OTP generated for local testing phone={} otp={}", phone, code);
         } else {
             log.info("OTP sent phone={}", phone);

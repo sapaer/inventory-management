@@ -38,7 +38,7 @@ public class InventoryController {
     public ResponseEntity<ApiEnvelope<List<Map<String, Object>>>> list(
             @AuthenticationPrincipal UUID userId,
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) VehicleCategory vehicle,
+            @RequestParam(required = false) List<VehicleCategory> vehicle,
             @RequestParam(required = false) String status
     ) {
         return ResponseEntity.ok(ApiEnvelope.ok(inventoryService.list(userId, q, vehicle, status)));

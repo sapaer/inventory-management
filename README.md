@@ -4,15 +4,14 @@ Phase 1 backend for auto-parts inventory: **Auth**, **Inventory**, and **Notific
 
 - Java 17+
 - Spring Boot 3.3
-- PostgreSQL
-- Redis
-- JWT access tokens + Redis refresh sessions
+- PostgreSQL (data + OTP/session store)
+- JWT access tokens + Postgres refresh sessions
 
 ## Run locally
 
 1. Install [JDK 17+](https://adoptium.net/) and [Maven 3.9+](https://maven.apache.org/).
 
-2. Start Postgres and Redis (local services or Docker):
+2. Start Postgres (Docker):
 
 ```bash
 docker compose up -d
@@ -50,7 +49,7 @@ mvn spring-boot:run
 | GET | `/api/v1/auth/profile` | Bearer |
 | PUT | `/api/v1/auth/profile` | Bearer |
 
-OTP is stored in Redis only after WhatsApp/SMS send succeeds. Failed send does not create a user.
+OTP and refresh sessions are stored in Postgres (`app_kv_store`) after WhatsApp/SMS send succeeds. Failed send does not create a user.
 
 Delivery order: **Twilio WhatsApp**, then **Twilio SMS**. Meta Cloud API and MSG91 remain fallbacks if Twilio is not configured.
 

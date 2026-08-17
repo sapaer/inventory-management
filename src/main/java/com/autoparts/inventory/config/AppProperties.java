@@ -5,6 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app")
 public record AppProperties(
         boolean logOtp,
+        boolean devOtpBypass,
+        String devOtpCode,
         Jwt jwt,
         Aws aws,
         WhatsApp whatsapp,
@@ -12,6 +14,13 @@ public record AppProperties(
         Twilio twilio,
         Google google
 ) {
+    public String effectiveDevOtpCode() {
+        if (devOtpCode == null || devOtpCode.isBlank()) {
+            return "000000";
+        }
+        return devOtpCode.trim();
+    }
+
     public record Jwt(String secret, int accessExpiryHours, int refreshExpiryDays) {}
 
     public record Aws(String s3Bucket, String s3Region, String accessKey, String secretKey, String cloudfrontUrl) {}
