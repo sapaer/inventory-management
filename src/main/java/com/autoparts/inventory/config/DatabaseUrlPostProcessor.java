@@ -1,5 +1,7 @@
 package com.autoparts.inventory.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -12,15 +14,16 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class DatabaseUrlPostProcessor implements EnvironmentPostProcessor {
+    private static final Logger log = LoggerFactory.getLogger(DatabaseUrlPostProcessor.class);
+
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment env, SpringApplication application) {
         String raw = normalize(firstNonBlank(env.getProperty("DATABASE_URL"), System.getenv("DATABASE_URL")));
         boolean onRender = "true".equalsIgnoreCase(firstNonBlank(env.getProperty("RENDER"), System.getenv("RENDER")));
         if (raw == null || raw.isBlank()) {
             if (onRender) {
-                throw new IllegalStateException(
-                        "DATABASE_URL is missing on the Render web service. "
-                                + "Set Key=DATABASE_URL and Value=postgres://... (do not include DATABASE_URL= in the value).");
+                throw fail("DATABASE_URL is missing on the Render web service. "
+                        + "Set Key=DATABASE_URL and Value=postgres://... (do not include DATABASE_URL= in the value).");
             }
             return;
         }
@@ -34,22 +37,22 @@ public class DatabaseUrlPostProcessor implements EnvironmentPostProcessor {
             URI uri = URI.create(raw.replaceFirst("^postgres(ql)?:", "http:"));
             String userInfo = uri.getUserInfo();
             if (userInfo == null || !userInfo.contains(":")) {
-                throw new IllegalStateException("DATABASE_URL must include username and password");
+                throw fail("DATABASE_URL must include username and password");
             }
             int idx = userInfo.indexOf(':');
             String user = URLDecoder.decode(userInfo.substring(0, idx), StandardCharsets.UTF_8);
             String pass = URLDecoder.decode(userInfo.substring(idx + 1), StandardCharsets.UTF_8);
             if (user.isBlank() || pass.isBlank()) {
-                throw new IllegalStateException("DATABASE_URL username/password cannot be blank");
+                throw fail("DATABASE_URL username/password cannot be blank");
             }
             String host = uri.getHost();
             if (host == null || host.isBlank()) {
-                throw new IllegalStateException("DATABASE_URL must include a hostname");
+                throw fail("DATABASE_URL must include a hostname");
             }
             int port = uri.getPort() == -1 ? 5432 : uri.getPort();
             String path = uri.getPath();
             if (path == null || path.isBlank() || "/".equals(path)) {
-                throw new IllegalStateException("DATABASE_URL must include a database name");
+                throw fail("DATABASE_URL must include a database name");
             }
             String jdbc = "jdbc:postgresql://" + host + ":" + port + path;
             String query = uri.getQuery();
@@ -63,11 +66,22 @@ public class DatabaseUrlPostProcessor implements EnvironmentPostProcessor {
             props.put("spring.datasource.username", user);
             props.put("spring.datasource.password", pass);
             env.getPropertySources().addFirst(new MapPropertySource("databaseUrl", props));
-        } catch (IllegalStateException ex) {
+            log.info("datasource configured host={} db={}", host, path.startsWith("/") ? path.substring(1) : path);
+        } catch (DatabaseUrlException ex) {
             throw ex;
         } catch (Exception ex) {
-            throw new IllegalStateException("Could not parse DATABASE_URL: " + ex.getMessage(), ex);
+            throw fail("Could not parse DATABASE_URL: " + ex.getMessage(), ex);
         }
+    }
+
+    private static DatabaseUrlException fail(String message) {
+        log.error(message);
+        return new DatabaseUrlException(message);
+    }
+
+    private static DatabaseUrlException fail(String message, Throwable cause) {
+        log.error(message, cause);
+        return new DatabaseUrlException(message, cause);
     }
 
     private static String normalize(String raw) {

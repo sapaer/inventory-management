@@ -39,4 +39,8 @@ public class AppException extends RuntimeException {
     public static AppException tooManyRequests(String code, String message) {
         return new AppException(code, message, HttpStatus.TOO_MANY_REQUESTS);
     }
+
+    public static AppException serviceUnavailable(String code, String message) {
+        return new AppException(code, message, HttpStatus.SERVICE_UNAVAILABLE);
+    }
 }
