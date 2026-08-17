@@ -14,8 +14,20 @@ import java.util.Map;
 public class DatabaseUrlPostProcessor implements EnvironmentPostProcessor {
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment env, SpringApplication application) {
-        String raw = firstNonBlank(env.getProperty("DATABASE_URL"), System.getenv("DATABASE_URL"));
-        if (raw == null || raw.isBlank() || raw.startsWith("jdbc:")) {
+        String raw = normalize(firstNonBlank(env.getProperty("DATABASE_URL"), System.getenv("DATABASE_URL")));
+        boolean onRender = "true".equalsIgnoreCase(firstNonBlank(env.getProperty("RENDER"), System.getenv("RENDER")));
+        if (raw == null || raw.isBlank()) {
+            if (onRender) {
+                throw new IllegalStateException(
+                        "DATABASE_URL is missing on the Render web service. "
+                                + "Set Key=DATABASE_URL and Value=postgres://... (do not include DATABASE_URL= in the value).");
+            }
+            return;
+        }
+        if (raw.startsWith("jdbc:")) {
+            Map<String, Object> jdbcProps = new HashMap<>();
+            jdbcProps.put("spring.datasource.url", raw);
+            env.getPropertySources().addFirst(new MapPropertySource("databaseUrl", jdbcProps));
             return;
         }
         try {
@@ -43,9 +55,23 @@ public class DatabaseUrlPostProcessor implements EnvironmentPostProcessor {
             props.put("spring.datasource.username", user);
             props.put("spring.datasource.password", pass);
             env.getPropertySources().addFirst(new MapPropertySource("databaseUrl", props));
-        } catch (Exception ignored) {
-            // keep yaml defaults
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not parse DATABASE_URL: " + ex.getMessage(), ex);
         }
+    }
+
+    private static String normalize(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.trim();
+        if (value.startsWith("\"") && value.endsWith("\"") && value.length() >= 2) {
+            value = value.substring(1, value.length() - 1).trim();
+        }
+        if (value.regionMatches(true, 0, "DATABASE_URL=", 0, "DATABASE_URL=".length())) {
+            value = value.substring("DATABASE_URL=".length()).trim();
+        }
+        return value;
     }
 
     private static String firstNonBlank(String... values) {
