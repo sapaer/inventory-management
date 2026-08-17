@@ -41,4 +41,12 @@ class DatabaseUrlPostProcessorTest {
         assertEquals("shop", env.getProperty("spring.datasource.username"));
         assertEquals("secret", env.getProperty("spring.datasource.password"));
     }
+
+    @Test
+    void postgresqlUrlUsesExplicitPort() {
+        var props = DatabaseUrlParser.parse(
+                "postgresql://spaer_user:secret@dpg-example-a:5042/spaer?sslmode=require");
+        assertEquals("jdbc:postgresql://dpg-example-a:5042/spaer?sslmode=require", props.get("spring.datasource.url"));
+        assertEquals("spaer_user", props.get("spring.datasource.username"));
+    }
 }
