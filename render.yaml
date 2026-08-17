@@ -1,10 +1,6 @@
-# Existing Render Postgres. Do not put passwords in this file.
-databases:
-  - name: example_spaer_instance
-    plan: free
-    databaseName: example_spaer_instance
-    user: example_spaer_instance_user
-
+# Do not declare a database here. Render allows only one free Postgres,
+# and example_spaer_instance already exists. Paste its Internal Database URL
+# as DATABASE_URL when applying this Blueprint.
 services:
   - type: web
     name: inventory-api
@@ -15,9 +11,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: example_spaer_instance
-          property: connectionString
+        sync: false
       - key: DEV_OTP_BYPASS
         value: "true"
       - key: DEV_OTP_CODE
