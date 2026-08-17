@@ -99,12 +99,19 @@ public class AuthService {
 
     @Transactional
     public Map<String, Object> verifyOtp(String phone, String submitted) {
-        String stored = cache.get("otp:" + phone);
-        if (stored == null || stored.isBlank()) {
-            throw AppException.badRequest("OTP_EXPIRED", "OTP has expired. Please request a new one.");
-        }
-        if (!stored.equals(submitted)) {
-            throw AppException.badRequest("OTP_INVALID", "Incorrect OTP. Please try again.");
+        boolean bypassCode = props.devOtpBypass()
+                && submitted != null
+                && submitted.equals(props.effectiveDevOtpCode());
+        if (!bypassCode) {
+            String stored = cache.get("otp:" + phone);
+            if (stored == null || stored.isBlank()) {
+                throw AppException.badRequest("OTP_EXPIRED", "OTP has expired. Please request a new one.");
+            }
+            if (!stored.equals(submitted)) {
+                throw AppException.badRequest("OTP_INVALID", "Incorrect OTP. Please try again.");
+            }
+        } else {
+            log.warn("DEV OTP bypass accepted phone={}", phone);
         }
         cache.delete("otp:" + phone, "otp_attempts:" + phone);
 

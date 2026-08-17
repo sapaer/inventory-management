@@ -65,4 +65,29 @@ class AuthServiceTest {
         verify(otp, never()).sendOtp(anyString(), anyString());
         verify(cache).set(eq("otp:8619544044"), eq("000000"), eq(Duration.ofSeconds(300)));
     }
+
+    @Test
+    void verifyOtpBypassAcceptsDevCode() {
+        AuthService svc = new AuthService(users, locations, vehicleCategories, cache, jwt, otp, props(true));
+        org.mockito.Mockito.when(users.existsByPhone("8619544044")).thenReturn(false);
+        org.mockito.Mockito.when(users.findByPhone("8619544044")).thenReturn(java.util.Optional.empty());
+        org.mockito.Mockito.when(users.save(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> {
+            com.autoparts.inventory.entity.User created = inv.getArgument(0);
+            created.setId(java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"));
+            return created;
+        });
+        org.mockito.Mockito.when(jwt.generateAccessToken(org.mockito.ArgumentMatchers.any(), eq("8619544044")))
+                .thenReturn("access");
+        org.mockito.Mockito.when(locations.findByUserIdAndPrimaryTrue(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.Optional.empty());
+        org.mockito.Mockito.when(vehicleCategories.findByUserId(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(java.util.List.of());
+
+        var out = svc.verifyOtp("8619544044", "000000");
+
+        assertEquals(Boolean.TRUE, out.get("isNewUser"));
+        assertEquals("access", out.get("accessToken"));
+        verify(cache).delete("otp:8619544044", "otp_attempts:8619544044");
+        verify(cache, never()).get("otp:8619544044");
+    }
 }

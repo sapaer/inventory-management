@@ -35,7 +35,10 @@ public class WhatsAppClient {
         String body = "Your inventory login OTP is " + otp + ". It expires in 5 minutes.";
         if (twilio.whatsappConfigured()) {
             String contentSid = twilio.otpContentSid();
-            twilio.sendWhatsApp(phone, body, contentSid, null);
+            Map<String, String> variables = contentSid != null && !contentSid.isBlank()
+                    ? Map.of("1", otp)
+                    : null;
+            twilio.sendWhatsApp(phone, body, contentSid, variables);
             return;
         }
         List<Map<String, String>> otpParam = List.of(Map.of("type", "text", "text", otp));
