@@ -6,6 +6,8 @@ import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 
 import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,14 +25,21 @@ public class DatabaseUrlPostProcessor implements EnvironmentPostProcessor {
             String userInfo = uri.getUserInfo();
             if (userInfo != null && userInfo.contains(":")) {
                 int idx = userInfo.indexOf(':');
-                user = userInfo.substring(0, idx);
-                pass = userInfo.substring(idx + 1);
+                user = URLDecoder.decode(userInfo.substring(0, idx), StandardCharsets.UTF_8);
+                pass = URLDecoder.decode(userInfo.substring(idx + 1), StandardCharsets.UTF_8);
             }
             String host = uri.getHost() == null ? "localhost" : uri.getHost();
             int port = uri.getPort() == -1 ? 5432 : uri.getPort();
             String path = uri.getPath() == null ? "/inventory" : uri.getPath();
+            String jdbc = "jdbc:postgresql://" + host + ":" + port + path;
+            String query = uri.getQuery();
+            if (query != null && !query.isBlank()) {
+                jdbc += "?" + query;
+            } else if (!"localhost".equals(host) && !"127.0.0.1".equals(host)) {
+                jdbc += "?sslmode=require";
+            }
             Map<String, Object> props = new HashMap<>();
-            props.put("spring.datasource.url", "jdbc:postgresql://" + host + ":" + port + path);
+            props.put("spring.datasource.url", jdbc);
             props.put("spring.datasource.username", user);
             props.put("spring.datasource.password", pass);
             env.getPropertySources().addFirst(new MapPropertySource("databaseUrl", props));
