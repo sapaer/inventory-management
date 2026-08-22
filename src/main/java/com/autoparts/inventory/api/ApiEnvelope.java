@@ -1,12 +1,17 @@
 package com.autoparts.inventory.api;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 
+@Getter
+@AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record ApiEnvelope<T>(boolean success, T data, ErrorInfo error, MetaInfo meta) {
-    public record ErrorInfo(String code, String message, String field) {}
-
-    public record MetaInfo(int page, int limit, long total) {}
+public class ApiEnvelope<T> {
+    private final boolean success;
+    private final T data;
+    private final ErrorInfo error;
+    private final MetaInfo meta;
 
     public static <T> ApiEnvelope<T> ok(T data) {
         return new ApiEnvelope<>(true, data, null, null);

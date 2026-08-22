@@ -1,6 +1,7 @@
 package com.autoparts.inventory.client;
 
 import com.autoparts.inventory.config.AppProperties;
+import com.autoparts.inventory.config.SmsProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -17,12 +18,12 @@ import java.util.Map;
 @Component
 public class SmsClient {
     private static final Logger log = LoggerFactory.getLogger(SmsClient.class);
-    private final AppProperties.Sms cfg;
+    private final SmsProperties cfg;
     private final TwilioMessagingClient twilio;
     private final RestTemplate http = new RestTemplate();
 
     public SmsClient(AppProperties props, TwilioMessagingClient twilio) {
-        this.cfg = props.sms();
+        this.cfg = props.getSms();
         this.twilio = twilio;
     }
 
@@ -30,7 +31,7 @@ public class SmsClient {
         if (useTwilio()) {
             return twilio.smsConfigured();
         }
-        return notBlank(cfg.authKey());
+        return notBlank(cfg.getAuthKey());
     }
 
     public void sendOtp(String phone, String otp) {
@@ -53,9 +54,9 @@ public class SmsClient {
     }
 
     private void sendMsg91(String phone, String msg, String otp) {
-        if (!notBlank(cfg.senderId()) || otp == null) {
+        if (!notBlank(cfg.getSenderId()) || otp == null) {
             String url = UriComponentsBuilder.fromHttpUrl("https://api.msg91.com/api/sendhttp.php")
-                    .queryParam("authkey", cfg.authKey())
+                    .queryParam("authkey", cfg.getAuthKey())
                     .queryParam("mobiles", "91" + phone)
                     .queryParam("message", msg)
                     .queryParam("route", "4")
@@ -65,12 +66,12 @@ public class SmsClient {
             return;
         }
         Map<String, Object> payload = Map.of(
-                "template_id", cfg.senderId(),
+                "template_id", cfg.getSenderId(),
                 "short_url", "0",
                 "recipients", List.of(Map.of("mobiles", "91" + phone, "OTP", otp, "otp", otp))
         );
         HttpHeaders headers = new HttpHeaders();
-        headers.set("authkey", cfg.authKey());
+        headers.set("authkey", cfg.getAuthKey());
         headers.setContentType(MediaType.APPLICATION_JSON);
         exchange("https://control.msg91.com/api/v5/flow/", new HttpEntity<>(payload, headers));
     }
@@ -94,7 +95,7 @@ public class SmsClient {
     }
 
     private String provider() {
-        return cfg.provider() == null || cfg.provider().isBlank() ? "twilio" : cfg.provider().trim().toLowerCase();
+        return cfg.getProvider() == null || cfg.getProvider().isBlank() ? "twilio" : cfg.getProvider().trim().toLowerCase();
     }
 
     private static boolean notBlank(String v) {

@@ -2,20 +2,24 @@ package com.autoparts.inventory.dto;
 
 import com.autoparts.inventory.enums.BusinessType;
 import com.autoparts.inventory.enums.VehicleCategory;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.List;
 
-public record ProfileUpdateRequest(
-        String name,
-        String shopName,
-        String email,
-        BusinessType businessType,
-        String address,
-        String area,
-        String city,
-        String state,
-        String pincode,
-        Double geoLat,
-        Double geoLng,
-        List<VehicleCategory> vehicleCategories
-) {}
+@Getter
+@Setter
+public class ProfileUpdateRequest {
+    private String name;
+    private String shopName;
+    private String email;
+    private BusinessType businessType;
+    private String address;
+    private String area;
+    private String city;
+    private String state;
+    private String pincode;
+    private Double geoLat;
+    private Double geoLng;
+    private List<VehicleCategory> vehicleCategories;
+}

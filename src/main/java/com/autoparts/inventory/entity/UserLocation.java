@@ -35,9 +35,6 @@ public class UserLocation {
     @Column(name = "geo_lng")
     private BigDecimal geoLng;
 
-    @Column(name = "is_primary", nullable = false)
-    private boolean primary = true;
-
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 

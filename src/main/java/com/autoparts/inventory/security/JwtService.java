@@ -21,15 +21,15 @@ public class JwtService {
     public JwtService(AppProperties props) {
         byte[] secret;
         try {
-            secret = Base64.getDecoder().decode(props.jwt().secret());
+            secret = Base64.getDecoder().decode(props.getJwt().getSecret());
         } catch (IllegalArgumentException ex) {
-            secret = props.jwt().secret().getBytes(StandardCharsets.UTF_8);
+            secret = props.getJwt().getSecret().getBytes(StandardCharsets.UTF_8);
         }
         if (secret.length < 32) {
             throw new IllegalStateException("jwt secret must decode to at least 32 bytes");
         }
         this.key = Keys.hmacShaKeyFor(secret);
-        this.accessExpiryHours = props.jwt().accessExpiryHours();
+        this.accessExpiryHours = props.getJwt().getAccessExpiryHours();
     }
 
     public String generateAccessToken(UUID userId, String phone) {

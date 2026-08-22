@@ -1,6 +1,8 @@
 package com.autoparts.inventory.service;
 
 import com.autoparts.inventory.config.AppProperties;
+import com.autoparts.inventory.dto.PlaceDetails;
+import com.autoparts.inventory.dto.PlaceSuggestion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -12,7 +14,6 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -20,15 +21,16 @@ import java.util.Map;
 public class PlacesService {
     private static final Logger log = LoggerFactory.getLogger(PlacesService.class);
     private static final String NOMINATIM_UA = "PartNear/1.0 (inventory-management)";
+    private static final PlaceDetails EMPTY_DETAILS = new PlaceDetails(null, null, null, null, null, null, null);
 
     private final RestTemplate http = new RestTemplate();
     private final String googleKey;
 
     public PlacesService(AppProperties props) {
-        this.googleKey = props.google() == null ? "" : blankToEmpty(props.google().placesApiKey());
+        this.googleKey = props.getGoogle() == null ? "" : blankToEmpty(props.getGoogle().getPlacesApiKey());
     }
 
-    public List<Map<String, Object>> autocomplete(String query) {
+    public List<PlaceSuggestion> autocomplete(String query) {
         String q = query == null ? "" : query.trim();
         if (q.length() < 2) {
             return List.of();
@@ -43,9 +45,9 @@ public class PlacesService {
         return nominatimAutocomplete(q);
     }
 
-    public Map<String, Object> details(String placeId) {
+    public PlaceDetails details(String placeId) {
         if (placeId == null || placeId.isBlank()) {
-            return Map.of();
+            return EMPTY_DETAILS;
         }
         if (placeId.startsWith("nom:")) {
             String[] parts = placeId.substring(4).split(",", 2);
@@ -60,12 +62,12 @@ public class PlacesService {
                 log.warn("google place details failed: {}", ex.getMessage());
             }
         }
-        return Map.of();
+        return EMPTY_DETAILS;
     }
 
-    public Map<String, Object> reverse(Double lat, Double lng) {
+    public PlaceDetails reverse(Double lat, Double lng) {
         if (lat == null || lng == null) {
-            return Map.of();
+            return EMPTY_DETAILS;
         }
         if (googleEnabled()) {
             try {
@@ -82,7 +84,7 @@ public class PlacesService {
     }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> googleAutocomplete(String q) {
+    private List<PlaceSuggestion> googleAutocomplete(String q) {
         URI uri = UriComponentsBuilder
                 .fromUriString("https://maps.googleapis.com/maps/api/place/autocomplete/json")
                 .queryParam("input", q)
@@ -101,23 +103,22 @@ public class PlacesService {
             throw new IllegalStateException("Google Places status " + status);
         }
         List<Map<String, Object>> predictions = (List<Map<String, Object>>) body.getOrDefault("predictions", List.of());
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<PlaceSuggestion> out = new ArrayList<>();
         for (Map<String, Object> p : predictions) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("placeId", p.get("place_id"));
-            row.put("description", p.get("description"));
+            String mainText = null;
+            String secondaryText = null;
             Map<String, Object> structured = (Map<String, Object>) p.get("structured_formatting");
             if (structured != null) {
-                row.put("mainText", structured.get("main_text"));
-                row.put("secondaryText", structured.get("secondary_text"));
+                mainText = asString(structured.get("main_text"));
+                secondaryText = asString(structured.get("secondary_text"));
             }
-            out.add(row);
+            out.add(new PlaceSuggestion(asString(p.get("place_id")), asString(p.get("description")), mainText, secondaryText));
         }
         return out;
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> googleDetails(String placeId) {
+    private PlaceDetails googleDetails(String placeId) {
         URI uri = UriComponentsBuilder
                 .fromUriString("https://maps.googleapis.com/maps/api/place/details/json")
                 .queryParam("place_id", placeId)
@@ -134,7 +135,7 @@ public class PlacesService {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> googleReverse(double lat, double lng) {
+    private PlaceDetails googleReverse(double lat, double lng) {
         URI uri = UriComponentsBuilder
                 .fromUriString("https://maps.googleapis.com/maps/api/geocode/json")
                 .queryParam("latlng", lat + "," + lng)
@@ -148,24 +149,25 @@ public class PlacesService {
         }
         List<Map<String, Object>> results = (List<Map<String, Object>>) body.getOrDefault("results", List.of());
         if (results.isEmpty()) {
-            return Map.of();
+            return EMPTY_DETAILS;
         }
         return fromGoogleResult(results.get(0));
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> fromGoogleResult(Map<String, Object> result) {
+    private PlaceDetails fromGoogleResult(Map<String, Object> result) {
         if (result == null) {
-            return Map.of();
+            return EMPTY_DETAILS;
         }
-        Map<String, Object> loc = new LinkedHashMap<>();
-        loc.put("address", result.get("formatted_address"));
+        String address = asString(result.get("formatted_address"));
+        Double geoLat = null;
+        Double geoLng = null;
         Map<String, Object> geometry = (Map<String, Object>) result.get("geometry");
         if (geometry != null) {
             Map<String, Object> point = (Map<String, Object>) geometry.get("location");
             if (point != null) {
-                loc.put("geoLat", toDouble(point.get("lat")));
-                loc.put("geoLng", toDouble(point.get("lng")));
+                geoLat = toDouble(point.get("lat"));
+                geoLng = toDouble(point.get("lng"));
             }
         }
         String area = firstComponent(result, "sublocality_level_1", "sublocality", "neighborhood", "route");
@@ -175,11 +177,7 @@ public class PlacesService {
         if (area == null) {
             area = result.get("name") == null ? city : String.valueOf(result.get("name"));
         }
-        loc.put("area", area);
-        loc.put("city", city);
-        loc.put("state", state);
-        loc.put("pincode", pincode);
-        return loc;
+        return new PlaceDetails(address, area, city, state, pincode, geoLat, geoLng);
     }
 
     @SuppressWarnings("unchecked")
@@ -201,7 +199,7 @@ public class PlacesService {
     }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> nominatimAutocomplete(String q) {
+    private List<PlaceSuggestion> nominatimAutocomplete(String q) {
         URI uri = UriComponentsBuilder
                 .fromUriString("https://nominatim.openstreetmap.org/search")
                 .queryParam("q", q)
@@ -213,28 +211,27 @@ public class PlacesService {
                 .encode()
                 .toUri();
         List<Map<String, Object>> rows = nominatimGetList(uri);
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<PlaceSuggestion> out = new ArrayList<>();
         for (Map<String, Object> row : rows) {
-            Map<String, Object> item = new LinkedHashMap<>();
             String lat = String.valueOf(row.get("lat"));
             String lon = String.valueOf(row.get("lon"));
-            item.put("placeId", "nom:" + lat + "," + lon);
-            item.put("description", row.get("display_name"));
+            String mainText = null;
+            String secondaryText = null;
             Map<String, Object> address = (Map<String, Object>) row.get("address");
             if (address != null) {
                 Object main = firstNonBlank(address.get("suburb"), address.get("neighbourhood"),
                         address.get("road"), address.get("village"), address.get("town"), address.get("city"));
                 Object secondary = firstNonBlank(address.get("city"), address.get("state"));
-                item.put("mainText", main);
-                item.put("secondaryText", secondary);
+                mainText = main == null ? null : String.valueOf(main);
+                secondaryText = secondary == null ? null : String.valueOf(secondary);
             }
-            out.add(item);
+            out.add(new PlaceSuggestion("nom:" + lat + "," + lon, asString(row.get("display_name")), mainText, secondaryText));
         }
         return out;
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> nominatimReverse(double lat, double lng) {
+    private PlaceDetails nominatimReverse(double lat, double lng) {
         URI uri = UriComponentsBuilder
                 .fromUriString("https://nominatim.openstreetmap.org/reverse")
                 .queryParam("lat", lat)
@@ -246,22 +243,23 @@ public class PlacesService {
                 .toUri();
         Map<String, Object> body = nominatimGetMap(uri);
         if (body == null) {
-            return Map.of();
+            return EMPTY_DETAILS;
         }
-        Map<String, Object> loc = new LinkedHashMap<>();
-        loc.put("address", body.get("display_name"));
-        loc.put("geoLat", lat);
-        loc.put("geoLng", lng);
-        Map<String, Object> address = (Map<String, Object>) body.get("address");
-        if (address != null) {
-            loc.put("area", firstNonBlank(address.get("suburb"), address.get("neighbourhood"),
-                    address.get("road"), address.get("village"), address.get("county")));
-            loc.put("city", firstNonBlank(address.get("city"), address.get("town"),
-                    address.get("city_district"), address.get("state_district")));
-            loc.put("state", address.get("state"));
-            loc.put("pincode", firstNonBlank(address.get("postcode")));
+        String address = asString(body.get("display_name"));
+        String area = null;
+        String city = null;
+        String state = null;
+        String pincode = null;
+        Map<String, Object> addressParts = (Map<String, Object>) body.get("address");
+        if (addressParts != null) {
+            area = asString(firstNonBlank(addressParts.get("suburb"), addressParts.get("neighbourhood"),
+                    addressParts.get("road"), addressParts.get("village"), addressParts.get("county")));
+            city = asString(firstNonBlank(addressParts.get("city"), addressParts.get("town"),
+                    addressParts.get("city_district"), addressParts.get("state_district")));
+            state = asString(addressParts.get("state"));
+            pincode = asString(firstNonBlank(addressParts.get("postcode")));
         }
-        return loc;
+        return new PlaceDetails(address, area, city, state, pincode, lat, lng);
     }
 
     @SuppressWarnings("unchecked")
@@ -296,6 +294,10 @@ public class PlacesService {
             }
         }
         return null;
+    }
+
+    private static String asString(Object v) {
+        return v == null ? null : String.valueOf(v);
     }
 
     private static Double toDouble(Object v) {

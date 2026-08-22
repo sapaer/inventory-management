@@ -1,6 +1,7 @@
 package com.autoparts.inventory.client;
 
 import com.autoparts.inventory.config.AppProperties;
+import com.autoparts.inventory.config.TwilioProperties;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.twilio.Twilio;
@@ -18,18 +19,18 @@ import java.util.Map;
 public class TwilioMessagingClient {
     private static final Logger log = LoggerFactory.getLogger(TwilioMessagingClient.class);
 
-    private final AppProperties.Twilio cfg;
+    private final TwilioProperties cfg;
     private final ObjectMapper json;
     private final boolean ready;
 
     public TwilioMessagingClient(AppProperties props, ObjectMapper json) {
-        this.cfg = props.twilio() == null
-                ? new AppProperties.Twilio("", "", "", "", "", "")
-                : props.twilio();
+        this.cfg = props.getTwilio() == null
+                ? new TwilioProperties("", "", "", "", "", "")
+                : props.getTwilio();
         this.json = json;
-        this.ready = notBlank(cfg.accountSid()) && notBlank(cfg.authToken());
+        this.ready = notBlank(cfg.getAccountSid()) && notBlank(cfg.getAuthToken());
         if (ready) {
-            Twilio.init(cfg.accountSid(), cfg.authToken());
+            Twilio.init(cfg.getAccountSid(), cfg.getAuthToken());
             log.info("twilio client initialized");
         } else {
             log.warn("twilio credentials missing; SMS/WhatsApp via Twilio disabled");
@@ -37,11 +38,11 @@ public class TwilioMessagingClient {
     }
 
     public boolean smsConfigured() {
-        return ready && notBlank(cfg.fromNumber());
+        return ready && notBlank(cfg.getFromNumber());
     }
 
     public boolean whatsappConfigured() {
-        return ready && notBlank(cfg.whatsappFrom());
+        return ready && notBlank(cfg.getWhatsappFrom());
     }
 
     public void sendSms(String phone, String body) {
@@ -51,7 +52,7 @@ public class TwilioMessagingClient {
         try {
             Message msg = Message.creator(
                     new PhoneNumber(toE164(phone)),
-                    new PhoneNumber(cfg.fromNumber().trim()),
+                    new PhoneNumber(cfg.getFromNumber().trim()),
                     body
             ).create();
             failIfTwilioError(msg, "sms");
@@ -68,7 +69,7 @@ public class TwilioMessagingClient {
         }
         try {
             PhoneNumber to = new PhoneNumber(toWhatsApp(phone));
-            PhoneNumber from = new PhoneNumber(toWhatsAppFrom(cfg.whatsappFrom()));
+            PhoneNumber from = new PhoneNumber(toWhatsAppFrom(cfg.getWhatsappFrom()));
             MessageCreator creator;
             boolean useTemplate = notBlank(contentSid) && contentSid.trim().toUpperCase().startsWith("HX");
             if (useTemplate) {
@@ -89,11 +90,11 @@ public class TwilioMessagingClient {
     }
 
     public String otpContentSid() {
-        return cfg.otpContentSid();
+        return cfg.getOtpContentSid();
     }
 
     public String lowStockContentSid() {
-        return cfg.lowStockContentSid();
+        return cfg.getLowStockContentSid();
     }
 
     static String toE164(String phone) {

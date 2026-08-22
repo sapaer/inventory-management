@@ -2,15 +2,19 @@ package com.autoparts.inventory.service;
 
 import com.autoparts.inventory.api.AppException;
 import com.autoparts.inventory.config.AppProperties;
+import com.autoparts.inventory.enums.AccountStatus;
 import com.autoparts.inventory.enums.OnboardingStatus;
-import com.autoparts.inventory.enums.VehicleCategory;
+import com.autoparts.inventory.dto.AccountSelectionResponse;
+import com.autoparts.inventory.dto.AccountSummaryResponse;
+import com.autoparts.inventory.dto.AuthResponse;
+import com.autoparts.inventory.dto.AuthResult;
 import com.autoparts.inventory.dto.ProfileUpdateRequest;
+import com.autoparts.inventory.dto.TokenRefreshResponse;
+import com.autoparts.inventory.dto.UserResponse;
 import com.autoparts.inventory.entity.User;
 import com.autoparts.inventory.entity.UserLocation;
-import com.autoparts.inventory.entity.UserVehicleCategory;
 import com.autoparts.inventory.repository.UserLocationRepository;
 import com.autoparts.inventory.repository.UserRepository;
-import com.autoparts.inventory.repository.UserVehicleCategoryRepository;
 import com.autoparts.inventory.security.JwtService;
 import com.autoparts.inventory.store.AppKvStore;
 import org.slf4j.Logger;
@@ -21,9 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Duration;
-import java.util.LinkedHashMap;
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -36,7 +39,6 @@ public class AuthService {
 
     private final UserRepository users;
     private final UserLocationRepository locations;
-    private final UserVehicleCategoryRepository vehicleCategories;
     private final AppKvStore cache;
     private final JwtService jwt;
     private final OtpDispatcher otp;
@@ -45,7 +47,6 @@ public class AuthService {
     public AuthService(
             UserRepository users,
             UserLocationRepository locations,
-            UserVehicleCategoryRepository vehicleCategories,
             AppKvStore cache,
             JwtService jwt,
             OtpDispatcher otp,
@@ -53,7 +54,6 @@ public class AuthService {
     ) {
         this.users = users;
         this.locations = locations;
-        this.vehicleCategories = vehicleCategories;
         this.cache = cache;
         this.jwt = jwt;
         this.otp = otp;
@@ -70,7 +70,7 @@ public class AuthService {
             }
         }
 
-        boolean bypass = props.devOtpBypass();
+        boolean bypass = props.isDevOtpBypass();
         String code = bypass
                 ? props.effectiveDevOtpCode()
                 : "%06d".formatted(RANDOM.nextInt(1_000_000));
@@ -90,7 +90,7 @@ public class AuthService {
         cache.expire(attemptsKey, Duration.ofSeconds(ATTEMPT_WINDOW_SECONDS));
         if (bypass) {
             log.warn("DEV OTP bypass active phone={} otp={} (delivery skipped)", phone, code);
-        } else if (props.logOtp()) {
+        } else if (props.isLogOtp()) {
             log.info("OTP generated for local testing phone={} otp={}", phone, code);
         } else {
             log.info("OTP sent phone={}", phone);
@@ -98,8 +98,8 @@ public class AuthService {
     }
 
     @Transactional
-    public Map<String, Object> verifyOtp(String phone, String submitted) {
-        boolean bypassCode = props.devOtpBypass()
+    public AuthResult verifyOtp(String phone, String submitted) {
+        boolean bypassCode = props.isDevOtpBypass()
                 && submitted != null
                 && submitted.equals(props.effectiveDevOtpCode());
         if (!bypassCode) {
@@ -115,22 +115,108 @@ public class AuthService {
         }
         cache.delete("otp:" + phone, "otp_attempts:" + phone);
 
-        boolean isNewUser = !users.existsByPhone(phone);
-        User user = users.findByPhone(phone).orElseGet(() -> {
+        List<User> matches = users.findAllByPhone(phone);
+        if (matches.isEmpty()) {
             User created = new User();
             created.setPhone(phone);
             created.setVerified(true);
             created.setOnboardingStatus(OnboardingStatus.REGISTERED);
-            return users.save(created);
-        });
-        if (!user.isVerified()) {
-            user.setVerified(true);
-            user = users.save(user);
+            return tokens(users.save(created), true);
         }
-        return tokens(user, isNewUser);
+        if (matches.size() > 1) {
+            String phoneToken = UUID.randomUUID().toString();
+            cache.set("phone_token:" + phoneToken, phone, Duration.ofSeconds(OTP_EXPIRY_SECONDS));
+            return new AccountSelectionResponse(phoneToken, matches.stream().map(this::toAccountSummary).toList());
+        }
+        return tokens(reactivateAndVerify(matches.get(0)), false);
     }
 
-    public Map<String, String> refreshToken(String refreshToken) {
+    /** Re-verifying OTP proves phone ownership again, so it also reactivates a deactivated account. */
+    private User reactivateAndVerify(User user) {
+        boolean dirty = false;
+        if (!user.isVerified()) {
+            user.setVerified(true);
+            dirty = true;
+        }
+        if (user.getStatus() == AccountStatus.DEACTIVATED) {
+            user.setStatus(AccountStatus.ACTIVE);
+            user.setDeactivatedAt(null);
+            dirty = true;
+            log.info("account reactivated userId={}", user.getId());
+        }
+        return dirty ? users.save(user) : user;
+    }
+
+    @Transactional
+    public AuthResponse selectAccount(String phoneToken, UUID accountId) {
+        if (phoneToken == null || phoneToken.isBlank() || accountId == null) {
+            throw AppException.badRequest("VALIDATION_ERROR", "phoneToken and accountId are required");
+        }
+        String cacheKey = "phone_token:" + phoneToken;
+        String phone = cache.get(cacheKey);
+        if (phone == null || phone.isBlank()) {
+            throw AppException.unauthorized("Phone verification expired. Please request a new OTP.");
+        }
+        User user = users.findById(accountId).orElseThrow(() -> AppException.notFound("Account not found"));
+        if (!user.getPhone().equals(phone)) {
+            throw AppException.unauthorized("This account does not belong to the verified phone number");
+        }
+        cache.delete(cacheKey);
+        log.info("account selected accountId={} phone={}", accountId, phone);
+        return tokens(reactivateAndVerify(user), false);
+    }
+
+    @Transactional
+    public AuthResponse switchAccount(UUID currentUserId, UUID targetAccountId) {
+        User current = users.findById(currentUserId).orElseThrow(() -> AppException.notFound("User not found"));
+        User target = users.findById(targetAccountId).orElseThrow(() -> AppException.notFound("Account not found"));
+        if (!target.getPhone().equals(current.getPhone())) {
+            log.warn("account switch denied fromUserId={} toAccountId={} phone mismatch", currentUserId, targetAccountId);
+            throw AppException.unauthorized("This account is not linked to your phone number");
+        }
+        if (target.getStatus() == AccountStatus.DEACTIVATED) {
+            throw AppException.conflict("ACCOUNT_DEACTIVATED", "This account is deactivated. Log in with OTP to reactivate it.");
+        }
+        log.info("account switched fromUserId={} toAccountId={}", currentUserId, targetAccountId);
+        return tokens(target, false);
+    }
+
+    @Transactional
+    public AuthResponse createAccount(UUID currentUserId) {
+        User current = users.findById(currentUserId).orElseThrow(() -> AppException.notFound("User not found"));
+        User created = new User();
+        created.setPhone(current.getPhone());
+        created.setVerified(true);
+        created.setOnboardingStatus(OnboardingStatus.REGISTERED);
+        User saved = users.save(created);
+        log.info("account created accountId={} phone={} fromUserId={}", saved.getId(), saved.getPhone(), currentUserId);
+        return tokens(saved, true);
+    }
+
+    public List<AccountSummaryResponse> listAccounts(UUID currentUserId) {
+        User current = users.findById(currentUserId).orElseThrow(() -> AppException.notFound("User not found"));
+        return users.findAllByPhone(current.getPhone()).stream().map(this::toAccountSummary).toList();
+    }
+
+    @Transactional
+    public void deactivate(UUID userId) {
+        User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
+        user.setStatus(AccountStatus.DEACTIVATED);
+        user.setDeactivatedAt(Instant.now());
+        users.save(user);
+        cache.delete("session:" + userId);
+        log.info("account deactivated userId={}", userId);
+    }
+
+    @Transactional
+    public void deleteAccount(UUID userId) {
+        User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
+        cache.delete("session:" + userId);
+        users.delete(user);
+        log.warn("account hard-deleted userId={}", userId);
+    }
+
+    public TokenRefreshResponse refreshToken(String refreshToken) {
         if (refreshToken == null || refreshToken.isBlank()) {
             throw AppException.unauthorized("Invalid refresh token");
         }
@@ -151,105 +237,102 @@ public class AuthService {
         }
         User user = users.findById(userId).orElseThrow(() -> AppException.unauthorized("User not found"));
         String newRefresh = userId + ":" + UUID.randomUUID();
-        cache.set(sessionKey, newRefresh, Duration.ofDays(props.jwt().refreshExpiryDays()));
-        return Map.of("accessToken", jwt.generateAccessToken(userId, user.getPhone()), "refreshToken", newRefresh);
+        cache.set(sessionKey, newRefresh, Duration.ofDays(props.getJwt().getRefreshExpiryDays()));
+        return new TokenRefreshResponse(jwt.generateAccessToken(userId, user.getPhone()), newRefresh);
     }
 
     public void logout(UUID userId) {
         cache.delete("session:" + userId);
     }
 
-    public Map<String, Object> getProfile(UUID userId) {
+    public UserResponse getProfile(UUID userId) {
         User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
-        return toUserDto(user);
+        return toUserResponse(user);
     }
 
     @Transactional
-    public Map<String, Object> updateProfile(UUID userId, ProfileUpdateRequest dto) {
+    public UserResponse updateProfile(UUID userId, ProfileUpdateRequest dto) {
         User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
-        if (dto.name() != null) {
-            user.setName(dto.name());
+        if (dto.getName() != null) {
+            user.setName(dto.getName());
         }
-        if (dto.shopName() != null) {
-            user.setShopName(dto.shopName());
+        if (dto.getShopName() != null) {
+            user.setShopName(dto.getShopName());
         }
-        if (dto.email() != null) {
-            user.setEmail(dto.email());
+        if (dto.getEmail() != null) {
+            user.setEmail(dto.getEmail());
         }
-        if (dto.businessType() != null) {
-            user.setBusinessType(dto.businessType());
+        if (dto.getBusinessType() != null) {
+            user.setBusinessType(dto.getBusinessType());
         }
         upsertLocation(userId, dto);
-        if (dto.vehicleCategories() != null) {
-            vehicleCategories.deleteByUserId(userId);
-            for (VehicleCategory category : dto.vehicleCategories()) {
-                vehicleCategories.save(new UserVehicleCategory(userId, category));
-            }
+        if (dto.getVehicleCategories() != null) {
+            user.setVehicleCategories(dto.getVehicleCategories());
         }
         if (user.getOnboardingStatus() == OnboardingStatus.REGISTERED
                 && user.getName() != null && user.getShopName() != null) {
             user.setOnboardingStatus(OnboardingStatus.PROFILED);
         }
-        return toUserDto(users.save(user));
+        return toUserResponse(users.save(user));
     }
 
-    private Map<String, Object> toUserDto(User user) {
-        Map<String, Object> dto = new LinkedHashMap<>();
-        dto.put("id", user.getId());
-        dto.put("phone", user.getPhone());
-        dto.put("name", user.getName());
-        dto.put("shopName", user.getShopName());
-        dto.put("email", user.getEmail());
-        dto.put("businessType", user.getBusinessType());
-        dto.put("onboardingStatus", user.getOnboardingStatus());
-        locations.findByUserIdAndPrimaryTrue(user.getId()).ifPresent(loc -> {
-            dto.put("address", loc.getAddress());
-            dto.put("area", loc.getArea());
-            dto.put("city", loc.getCity());
-            dto.put("state", loc.getState());
-            dto.put("pincode", loc.getPincode());
-            dto.put("geoLat", loc.getGeoLat());
-            dto.put("geoLng", loc.getGeoLng());
-        });
-        dto.put(
-                "vehicleCategories",
-                vehicleCategories.findByUserId(user.getId()).stream()
-                        .map(row -> row.getCategory().name())
-                        .toList()
+    private UserResponse toUserResponse(User user) {
+        UserLocation loc = locations.findByUserId(user.getId()).orElse(null);
+        return new UserResponse(
+                user.getId(),
+                user.getPhone(),
+                user.getName(),
+                user.getShopName(),
+                user.getEmail(),
+                user.getBusinessType(),
+                user.getOnboardingStatus(),
+                user.getStatus(),
+                loc == null ? null : loc.getAddress(),
+                loc == null ? null : loc.getArea(),
+                loc == null ? null : loc.getCity(),
+                loc == null ? null : loc.getState(),
+                loc == null ? null : loc.getPincode(),
+                loc == null ? null : loc.getGeoLat(),
+                loc == null ? null : loc.getGeoLng(),
+                user.getVehicleCategories()
         );
-        return dto;
+    }
+
+    private AccountSummaryResponse toAccountSummary(User user) {
+        return new AccountSummaryResponse(
+                user.getId(),
+                user.getShopName(),
+                user.getName(),
+                user.getBusinessType(),
+                user.getOnboardingStatus(),
+                user.getStatus()
+        );
     }
 
     private void upsertLocation(UUID userId, ProfileUpdateRequest dto) {
-        if (dto.address() == null && dto.area() == null && dto.city() == null
-                && dto.pincode() == null && dto.geoLat() == null && dto.geoLng() == null) {
+        if (dto.getAddress() == null && dto.getArea() == null && dto.getCity() == null
+                && dto.getPincode() == null && dto.getGeoLat() == null && dto.getGeoLng() == null) {
             return;
         }
-        UserLocation loc = locations.findByUserIdAndPrimaryTrue(userId).orElseGet(() -> {
+        UserLocation loc = locations.findByUserId(userId).orElseGet(() -> {
             UserLocation created = new UserLocation();
             created.setUserId(userId);
-            created.setPrimary(true);
             return created;
         });
-        if (dto.address() != null) loc.setAddress(dto.address());
-        if (dto.area() != null) loc.setArea(dto.area());
-        if (dto.city() != null) loc.setCity(dto.city());
-        if (dto.state() != null) loc.setState(dto.state());
-        if (dto.pincode() != null) loc.setPincode(dto.pincode());
-        if (dto.geoLat() != null) loc.setGeoLat(BigDecimal.valueOf(dto.geoLat()));
-        if (dto.geoLng() != null) loc.setGeoLng(BigDecimal.valueOf(dto.geoLng()));
+        if (dto.getAddress() != null) loc.setAddress(dto.getAddress());
+        if (dto.getArea() != null) loc.setArea(dto.getArea());
+        if (dto.getCity() != null) loc.setCity(dto.getCity());
+        if (dto.getState() != null) loc.setState(dto.getState());
+        if (dto.getPincode() != null) loc.setPincode(dto.getPincode());
+        if (dto.getGeoLat() != null) loc.setGeoLat(BigDecimal.valueOf(dto.getGeoLat()));
+        if (dto.getGeoLng() != null) loc.setGeoLng(BigDecimal.valueOf(dto.getGeoLng()));
         locations.save(loc);
     }
 
-    private Map<String, Object> tokens(User user, boolean isNewUser) {
+    private AuthResponse tokens(User user, boolean isNewUser) {
         String access = jwt.generateAccessToken(user.getId(), user.getPhone());
         String refresh = user.getId() + ":" + UUID.randomUUID();
-        cache.set("session:" + user.getId(), refresh, Duration.ofDays(props.jwt().refreshExpiryDays()));
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("accessToken", access);
-        out.put("refreshToken", refresh);
-        out.put("user", toUserDto(user));
-        out.put("isNewUser", isNewUser);
-        return out;
+        cache.set("session:" + user.getId(), refresh, Duration.ofDays(props.getJwt().getRefreshExpiryDays()));
+        return new AuthResponse(access, refresh, toUserResponse(user), isNewUser);
     }
 }

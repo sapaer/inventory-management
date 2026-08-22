@@ -31,6 +31,23 @@ mvn spring-boot:run
 
 The API listens on `http://localhost:8080`. Health check: `GET /actuator/health`.
 
+## Profiles
+
+- `dev` (default) — `application-dev.yml`. Datasource defaults to local Postgres (`localhost:5432/inventory`) if `SPRING_DATASOURCE_URL` isn't set.
+- `prod` — `application-prod.yml`. Datasource has no fallback; requires `DATABASE_URL` (parsed at startup) or `SPRING_DATASOURCE_URL`/`SPRING_DATASOURCE_USERNAME`/`SPRING_DATASOURCE_PASSWORD` to be set explicitly, so it fails fast instead of falling back to localhost.
+
+Select a profile with `SPRING_PROFILES_ACTIVE=prod` (Render sets this automatically via `render.yaml`).
+
+## Logging
+
+Log4j2 (`log4j2-spring.xml`), not the default Logback. Every request is logged (method, path, status, duration)
+via `RequestLoggingFilter`. Console output always; under the `prod` profile, logs also roll to
+`${LOG_DIR:-logs}/inventory-management.log` (daily/50MB rotation, 14 files kept, gzip'd).
+
+App log level: `logging.level.com.autoparts.inventory` — `DEBUG` in dev, `INFO` in prod (set per-profile in
+`application-{profile}.yml`). Framework loggers (Hibernate, Spring, Tomcat, HikariCP) are held at `WARN` in
+`log4j2-spring.xml`.
+
 On Windows PowerShell:
 
 ```powershell
@@ -48,6 +65,12 @@ mvn spring-boot:run
 | DELETE | `/api/v1/auth/logout` | Bearer |
 | GET | `/api/v1/auth/profile` | Bearer |
 | PUT | `/api/v1/auth/profile` | Bearer |
+| GET | `/api/v1/auth/accounts` | Bearer |
+| POST | `/api/v1/auth/accounts` | Bearer |
+| POST | `/api/v1/auth/accounts/select` | public (phoneToken) |
+| POST | `/api/v1/auth/accounts/switch` | Bearer |
+| POST | `/api/v1/auth/deactivate` | Bearer |
+| DELETE | `/api/v1/auth/account` | Bearer |
 
 OTP and refresh sessions are stored in Postgres (`app_kv_store`) after WhatsApp/SMS send succeeds. Failed send does not create a user.
 
@@ -88,7 +111,6 @@ Request body:
 | DELETE | `/api/v1/inventory/{id}` | soft delete |
 | PATCH | `/api/v1/inventory/{id}/quantity` | `{ "change": -1, "changeType": "SOLD" }` |
 | GET | `/api/v1/inventory/low-stock` | |
-| GET | `/api/v1/inventory/history/{id}` | |
 
 `costPrice` is stored but never returned in API responses.
 
@@ -105,7 +127,7 @@ src/main/java/com/autoparts/inventory/
   dto/            request bodies
   enums/          BusinessType, VehicleCategory, ChangeType, Notification*, OnboardingStatus
   client/         Twilio, WhatsApp, SMS, FCM
-  scheduler/      low-stock cron
+  scheduler/      low-stock cron, notification/OTP cleanup cron
   security/       JWT filter
   config/         app properties
 ```

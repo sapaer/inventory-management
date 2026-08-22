@@ -1,6 +1,7 @@
 package com.autoparts.inventory.client;
 
 import com.autoparts.inventory.config.AppProperties;
+import com.autoparts.inventory.config.WhatsAppProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -18,12 +19,12 @@ import java.util.Map;
 @Component
 public class WhatsAppClient {
     private static final Logger log = LoggerFactory.getLogger(WhatsAppClient.class);
-    private final AppProperties.WhatsApp cfg;
+    private final WhatsAppProperties cfg;
     private final TwilioMessagingClient twilio;
     private final RestTemplate http = new RestTemplate();
 
     public WhatsAppClient(AppProperties props, TwilioMessagingClient twilio) {
-        this.cfg = props.whatsapp();
+        this.cfg = props.getWhatsapp();
         this.twilio = twilio;
     }
 
@@ -89,9 +90,9 @@ public class WhatsAppClient {
                 "components", components
         ));
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(cfg.accessToken());
+        headers.setBearerAuth(cfg.getAccessToken());
         headers.setContentType(MediaType.APPLICATION_JSON);
-        String url = cfg.apiUrl() + "/" + cfg.phoneNumberId() + "/messages";
+        String url = cfg.getApiUrl() + "/" + cfg.getPhoneNumberId() + "/messages";
         try {
             http.postForEntity(url, new HttpEntity<>(body, headers), String.class);
         } catch (RestClientResponseException ex) {
@@ -101,7 +102,7 @@ public class WhatsAppClient {
     }
 
     private boolean metaConfigured() {
-        return notBlank(cfg.phoneNumberId()) && notBlank(cfg.accessToken());
+        return notBlank(cfg.getPhoneNumberId()) && notBlank(cfg.getAccessToken());
     }
 
     private static boolean notBlank(String v) {

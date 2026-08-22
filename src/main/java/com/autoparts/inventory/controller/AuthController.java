@@ -2,10 +2,18 @@ package com.autoparts.inventory.controller;
 
 import com.autoparts.inventory.api.ApiEnvelope;
 import com.autoparts.inventory.api.AppException;
+import com.autoparts.inventory.dto.AccountSelectRequest;
+import com.autoparts.inventory.dto.AccountSummaryResponse;
+import com.autoparts.inventory.dto.AccountSwitchRequest;
+import com.autoparts.inventory.dto.AuthResponse;
+import com.autoparts.inventory.dto.AuthResult;
 import com.autoparts.inventory.dto.OtpRequest;
+import com.autoparts.inventory.dto.OtpRequestedResponse;
 import com.autoparts.inventory.dto.OtpVerifyRequest;
 import com.autoparts.inventory.dto.ProfileUpdateRequest;
 import com.autoparts.inventory.dto.RefreshTokenRequest;
+import com.autoparts.inventory.dto.TokenRefreshResponse;
+import com.autoparts.inventory.dto.UserResponse;
 import com.autoparts.inventory.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -33,21 +41,21 @@ public class AuthController {
     }
 
     @PostMapping("/otp/request")
-    public ResponseEntity<ApiEnvelope<Map<String, String>>> requestOtp(@Valid @RequestBody OtpRequest req) {
-        validatePhone(req.phone());
-        authService.requestOtp(req.phone());
-        return ResponseEntity.ok(ApiEnvelope.ok(Map.of("message", "OTP sent", "expires_in", "300")));
+    public ResponseEntity<ApiEnvelope<OtpRequestedResponse>> requestOtp(@Valid @RequestBody OtpRequest req) {
+        validatePhone(req.getPhone());
+        authService.requestOtp(req.getPhone());
+        return ResponseEntity.ok(ApiEnvelope.ok(new OtpRequestedResponse("OTP sent", "300")));
     }
 
     @PostMapping("/otp/verify")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> verifyOtp(@Valid @RequestBody OtpVerifyRequest req) {
-        validatePhone(req.phone());
-        return ResponseEntity.ok(ApiEnvelope.ok(authService.verifyOtp(req.phone(), req.otp())));
+    public ResponseEntity<ApiEnvelope<AuthResult>> verifyOtp(@Valid @RequestBody OtpVerifyRequest req) {
+        validatePhone(req.getPhone());
+        return ResponseEntity.ok(ApiEnvelope.ok(authService.verifyOtp(req.getPhone(), req.getOtp())));
     }
 
     @PostMapping("/token/refresh")
-    public ResponseEntity<ApiEnvelope<Map<String, String>>> refresh(@RequestBody RefreshTokenRequest req) {
-        return ResponseEntity.ok(ApiEnvelope.ok(authService.refreshToken(req.refresh_token())));
+    public ResponseEntity<ApiEnvelope<TokenRefreshResponse>> refresh(@RequestBody RefreshTokenRequest req) {
+        return ResponseEntity.ok(ApiEnvelope.ok(authService.refreshToken(req.getRefreshToken())));
     }
 
     @DeleteMapping("/logout")
@@ -57,16 +65,51 @@ public class AuthController {
     }
 
     @GetMapping("/profile")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> profile(@AuthenticationPrincipal UUID userId) {
+    public ResponseEntity<ApiEnvelope<UserResponse>> profile(@AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(ApiEnvelope.ok(authService.getProfile(userId)));
     }
 
     @PutMapping("/profile")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> updateProfile(
+    public ResponseEntity<ApiEnvelope<UserResponse>> updateProfile(
             @AuthenticationPrincipal UUID userId,
             @RequestBody ProfileUpdateRequest dto
     ) {
         return ResponseEntity.ok(ApiEnvelope.ok(authService.updateProfile(userId, dto)));
+    }
+
+    @PostMapping("/accounts/select")
+    public ResponseEntity<ApiEnvelope<AuthResponse>> selectAccount(@RequestBody AccountSelectRequest req) {
+        return ResponseEntity.ok(ApiEnvelope.ok(authService.selectAccount(req.getPhoneToken(), req.getAccountId())));
+    }
+
+    @PostMapping("/accounts/switch")
+    public ResponseEntity<ApiEnvelope<AuthResponse>> switchAccount(
+            @AuthenticationPrincipal UUID userId,
+            @RequestBody AccountSwitchRequest req
+    ) {
+        return ResponseEntity.ok(ApiEnvelope.ok(authService.switchAccount(userId, req.getAccountId())));
+    }
+
+    @GetMapping("/accounts")
+    public ResponseEntity<ApiEnvelope<List<AccountSummaryResponse>>> listAccounts(@AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(ApiEnvelope.ok(authService.listAccounts(userId)));
+    }
+
+    @PostMapping("/accounts")
+    public ResponseEntity<ApiEnvelope<AuthResponse>> createAccount(@AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(ApiEnvelope.ok(authService.createAccount(userId)));
+    }
+
+    @PostMapping("/deactivate")
+    public ResponseEntity<ApiEnvelope<Void>> deactivate(@AuthenticationPrincipal UUID userId) {
+        authService.deactivate(userId);
+        return ResponseEntity.ok(ApiEnvelope.ok(null));
+    }
+
+    @DeleteMapping("/account")
+    public ResponseEntity<ApiEnvelope<Void>> deleteAccount(@AuthenticationPrincipal UUID userId) {
+        authService.deleteAccount(userId);
+        return ResponseEntity.ok(ApiEnvelope.ok(null));
     }
 
     private static void validatePhone(String phone) {
