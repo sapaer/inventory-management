@@ -1,6 +1,7 @@
 package com.autoparts.inventory.controller;
 
 import com.autoparts.inventory.api.ApiEnvelope;
+import com.autoparts.inventory.api.ErrorInfo;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +28,7 @@ public class HealthController {
         payload.put("postgres", pg);
         if (!"UP".equals(payload.get("status"))) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(new ApiEnvelope<>(false, payload, new ApiEnvelope.ErrorInfo("UNHEALTHY", "Postgres is down", null), null));
+                    .body(new ApiEnvelope<>(false, payload, new ErrorInfo("UNHEALTHY", "Postgres is down", null), null));
         }
         return ResponseEntity.ok(ApiEnvelope.ok(payload));
     }

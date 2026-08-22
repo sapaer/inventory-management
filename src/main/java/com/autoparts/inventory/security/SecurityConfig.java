@@ -38,10 +38,11 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health", "/health").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/otp/request", "/api/v1/auth/otp/verify",
-                                "/api/v1/auth/token/refresh").permitAll()
+                                "/api/v1/auth/token/refresh", "/api/v1/auth/accounts/select").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint((req, res, e) -> writeUnauthorized(res)))
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new RequestLoggingFilter(), JwtAuthFilter.class);
         return http.build();
     }
 

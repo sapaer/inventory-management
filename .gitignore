@@ -24,6 +24,10 @@ target/
 *.jar
 .mvn/wrapper/maven-wrapper.jar
 
+# Logs
+logs/
+*.log
+
 # IDE / OS
 .idea/
 .vscode/

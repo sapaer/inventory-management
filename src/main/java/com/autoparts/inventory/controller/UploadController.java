@@ -27,6 +27,6 @@ public class UploadController {
             @AuthenticationPrincipal UUID userId,
             @RequestBody PresignRequest req
     ) {
-        return ResponseEntity.ok(ApiEnvelope.ok(uploadService.presign(userId, req.filename(), req.contentType())));
+        return ResponseEntity.ok(ApiEnvelope.ok(uploadService.presign(userId, req.getFilename(), req.getContentType())));
     }
 }

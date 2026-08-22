@@ -1,47 +1,47 @@
 package com.autoparts.inventory.service;
 
 import com.autoparts.inventory.api.AppException;
-import com.autoparts.inventory.enums.ChangeType;
+import com.autoparts.inventory.enums.OnboardingStatus;
 import com.autoparts.inventory.enums.VehicleCategory;
 import com.autoparts.inventory.dto.AddPartRequest;
+import com.autoparts.inventory.dto.InventoryItemResponse;
 import com.autoparts.inventory.dto.QuantityUpdateRequest;
 import com.autoparts.inventory.dto.UpdatePartRequest;
-import com.autoparts.inventory.entity.InventoryHistory;
 import com.autoparts.inventory.entity.InventoryItem;
-import com.autoparts.inventory.repository.InventoryHistoryRepository;
+import com.autoparts.inventory.entity.User;
 import com.autoparts.inventory.repository.InventoryItemRepository;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
+import com.autoparts.inventory.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @Service
 public class InventoryService {
+    private static final Logger log = LoggerFactory.getLogger(InventoryService.class);
+
     private final InventoryItemRepository items;
-    private final InventoryHistoryRepository history;
+    private final UserRepository users;
     private final NotificationService notifier;
 
-    public InventoryService(InventoryItemRepository items, InventoryHistoryRepository history, NotificationService notifier) {
+    public InventoryService(InventoryItemRepository items, UserRepository users, NotificationService notifier) {
         this.items = items;
-        this.history = history;
+        this.users = users;
         this.notifier = notifier;
     }
 
-    public List<Map<String, Object>> list(UUID userId, String q, List<VehicleCategory> vehicles, String status) {
+    public List<InventoryItemResponse> list(UUID userId, String q, List<VehicleCategory> vehicles, String status) {
         List<InventoryItem> found;
         if (q != null && !q.isBlank()) {
             found = items.fullTextSearch(userId, q);
         } else {
             found = items.findByUserIdAndActiveTrueOrderByUpdatedAtDesc(userId);
         }
-        List<Map<String, Object>> out = new ArrayList<>();
+        List<InventoryItemResponse> out = new ArrayList<>();
         for (InventoryItem item : found) {
             if (vehicles != null && !vehicles.isEmpty() && !vehicles.contains(item.getVehicleCategory())) {
                 continue;
@@ -54,81 +54,76 @@ public class InventoryService {
         return out;
     }
 
-    public Map<String, Object> get(UUID userId, UUID itemId) {
+    public InventoryItemResponse get(UUID userId, UUID itemId) {
         return toResponse(requireOwnedActive(userId, itemId), null);
     }
 
     @Transactional
-    public Map<String, Object> add(UUID userId, AddPartRequest req) {
-        boolean dup = items.existsByUserIdAndPartNameIgnoreCaseAndActiveTrue(userId, req.partName());
-        int minQty = req.minQuantity() == null ? 2 : req.minQuantity();
-        int qty = req.quantity() == null ? 0 : req.quantity();
+    public InventoryItemResponse add(UUID userId, AddPartRequest req) {
+        boolean dup = items.existsByUserIdAndPartNameIgnoreCaseAndActiveTrue(userId, req.getPartName());
+        int minQty = req.getMinQuantity() == null ? 2 : req.getMinQuantity();
+        int qty = req.getQuantity() == null ? 0 : req.getQuantity();
         InventoryItem item = new InventoryItem();
         item.setUserId(userId);
-        item.setPartName(req.partName());
-        item.setLocalName(req.localName());
-        item.setSpecification(req.specification());
-        item.setDescription(req.description());
-        item.setVehicleCategory(req.vehicleCategory());
-        item.setBrand(req.brand());
-        item.setModel(req.model());
+        item.setPartName(req.getPartName());
+        item.setLocalName(req.getLocalName());
+        item.setSpecification(req.getSpecification());
+        item.setDescription(req.getDescription());
+        item.setVehicleCategory(req.getVehicleCategory());
+        item.setBrand(req.getBrand());
+        item.setModel(req.getModel());
         item.setQuantity(qty);
         item.setMinQuantity(minQty);
-        item.setSellingPrice(req.sellingPrice());
-        item.setCostPrice(req.costPrice());
-        item.setImages(req.images() == null ? List.of() : req.images());
+        item.setSellingPrice(req.getSellingPrice());
+        item.setCostPrice(req.getCostPrice());
+        item.setImages(req.getImages() == null ? List.of() : req.getImages());
         item.setActive(true);
         InventoryItem saved = items.save(item);
-        InventoryHistory h = new InventoryHistory();
-        h.setItemId(saved.getId());
-        h.setUserId(userId);
-        h.setChangeType(ChangeType.ADD);
-        h.setQtyBefore(0);
-        h.setQtyChange(qty);
-        h.setQtyAfter(qty);
-        h.setNote("Initial stock");
-        history.save(h);
+        log.info("part added userId={} itemId={} partName={} qty={} duplicate={}", userId, saved.getId(), saved.getPartName(), qty, dup);
+        markOnboardingActive(userId);
         return toResponse(saved, dup);
     }
 
+    private void markOnboardingActive(UUID userId) {
+        User user = users.findById(userId).orElse(null);
+        if (user != null && user.getOnboardingStatus() != OnboardingStatus.ACTIVE) {
+            user.setOnboardingStatus(OnboardingStatus.ACTIVE);
+            users.save(user);
+            log.info("onboarding complete userId={}", userId);
+        }
+    }
+
     @Transactional
-    public Map<String, Object> update(UUID userId, UUID itemId, UpdatePartRequest req) {
+    public InventoryItemResponse update(UUID userId, UUID itemId, UpdatePartRequest req) {
         InventoryItem item = requireOwnedActive(userId, itemId);
-        if (req.partName() != null) item.setPartName(req.partName());
-        if (req.localName() != null) item.setLocalName(req.localName());
-        if (req.specification() != null) item.setSpecification(req.specification());
-        if (req.description() != null) item.setDescription(req.description());
-        if (req.vehicleCategory() != null) item.setVehicleCategory(req.vehicleCategory());
-        if (req.brand() != null) item.setBrand(req.brand());
-        if (req.model() != null) item.setModel(req.model());
-        if (req.minQuantity() != null) item.setMinQuantity(req.minQuantity());
-        if (req.sellingPrice() != null) item.setSellingPrice(req.sellingPrice());
-        if (req.costPrice() != null) item.setCostPrice(req.costPrice());
-        if (req.images() != null) item.setImages(req.images());
+        if (req.getPartName() != null) item.setPartName(req.getPartName());
+        if (req.getLocalName() != null) item.setLocalName(req.getLocalName());
+        if (req.getSpecification() != null) item.setSpecification(req.getSpecification());
+        if (req.getDescription() != null) item.setDescription(req.getDescription());
+        if (req.getVehicleCategory() != null) item.setVehicleCategory(req.getVehicleCategory());
+        if (req.getBrand() != null) item.setBrand(req.getBrand());
+        if (req.getModel() != null) item.setModel(req.getModel());
+        if (req.getMinQuantity() != null) item.setMinQuantity(req.getMinQuantity());
+        if (req.getSellingPrice() != null) item.setSellingPrice(req.getSellingPrice());
+        if (req.getCostPrice() != null) item.setCostPrice(req.getCostPrice());
+        if (req.getImages() != null) item.setImages(req.getImages());
         return toResponse(items.save(item), null);
     }
 
     @Transactional
-    public Map<String, Object> updateQuantity(UUID userId, UUID itemId, QuantityUpdateRequest req) {
+    public InventoryItemResponse updateQuantity(UUID userId, UUID itemId, QuantityUpdateRequest req) {
         InventoryItem item = requireOwnedActive(userId, itemId);
         int before = item.getQuantity();
-        int after = before + req.change();
+        int after = before + req.getChange();
         if (after < 0) {
+            log.warn("quantity update rejected userId={} itemId={} before={} change={}", userId, itemId, before, req.getChange());
             throw AppException.conflict("INSUFFICIENT_STOCK", "Quantity cannot go below zero");
         }
         item.setQuantity(after);
         InventoryItem saved = items.save(item);
-        ChangeType changeType = req.changeType() == null ? ChangeType.ADJUSTMENT : req.changeType();
-        InventoryHistory h = new InventoryHistory();
-        h.setItemId(itemId);
-        h.setUserId(userId);
-        h.setChangeType(changeType);
-        h.setQtyBefore(before);
-        h.setQtyChange(req.change());
-        h.setQtyAfter(after);
-        h.setNote(req.note());
-        history.save(h);
+        log.info("quantity updated userId={} itemId={} before={} after={} changeType={}", userId, itemId, before, after, req.getChangeType());
         if (after <= saved.getMinQuantity()) {
+            log.info("low stock triggered userId={} itemId={} qty={} minQty={}", userId, itemId, after, saved.getMinQuantity());
             notifier.triggerLowStockCheck(saved);
         }
         return toResponse(saved, null);
@@ -141,37 +136,11 @@ public class InventoryService {
                 .orElseThrow(() -> AppException.notFound("Part not found"));
         item.setActive(false);
         items.save(item);
+        log.info("part deleted userId={} itemId={}", userId, itemId);
     }
 
-    public List<Map<String, Object>> lowStock(UUID userId) {
+    public List<InventoryItemResponse> lowStock(UUID userId) {
         return items.findLowStockByUser(userId).stream().map(i -> toResponse(i, null)).toList();
-    }
-
-    public Map<String, Object> history(UUID userId, UUID itemId, int page, int limit) {
-        InventoryItem item = items.findById(itemId)
-                .filter(i -> i.getUserId().equals(userId))
-                .orElseThrow(() -> AppException.notFound("Part not found"));
-        if (page < 1) page = 1;
-        if (limit <= 0) limit = 20;
-        Page<InventoryHistory> rows = history.findByItemIdOrderByCreatedAtDesc(item.getId(), PageRequest.of(page - 1, limit));
-        List<Map<String, Object>> content = rows.getContent().stream().map(h -> {
-            Map<String, Object> dto = new LinkedHashMap<>();
-            dto.put("id", h.getId());
-            dto.put("itemId", h.getItemId());
-            dto.put("changeType", h.getChangeType());
-            dto.put("qtyBefore", h.getQtyBefore());
-            dto.put("qtyChange", h.getQtyChange());
-            dto.put("qtyAfter", h.getQtyAfter());
-            dto.put("note", h.getNote());
-            dto.put("createdAt", h.getCreatedAt());
-            return dto;
-        }).toList();
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("content", content);
-        out.put("page", page);
-        out.put("limit", limit);
-        out.put("total", rows.getTotalElements());
-        return out;
     }
 
     private InventoryItem requireOwnedActive(UUID userId, UUID itemId) {
@@ -192,27 +161,25 @@ public class InventoryService {
         };
     }
 
-    private static Map<String, Object> toResponse(InventoryItem item, Boolean dup) {
-        Map<String, Object> dto = new LinkedHashMap<>();
-        dto.put("id", item.getId());
-        dto.put("partName", item.getPartName());
-        dto.put("localName", item.getLocalName());
-        dto.put("specification", item.getSpecification());
-        dto.put("description", item.getDescription());
-        dto.put("vehicleCategory", item.getVehicleCategory());
-        dto.put("brand", item.getBrand());
-        dto.put("model", item.getModel());
-        dto.put("quantity", item.getQuantity());
-        dto.put("minQuantity", item.getMinQuantity());
-        dto.put("sellingPrice", item.getSellingPrice());
-        dto.put("images", item.getImages() == null ? List.of() : item.getImages());
-        dto.put("stockStatus", item.stockStatus());
-        dto.put("isActive", item.isActive());
-        if (dup != null) {
-            dto.put("isDuplicate", dup);
-        }
-        dto.put("createdAt", item.getCreatedAt());
-        dto.put("updatedAt", item.getUpdatedAt());
-        return dto;
+    private static InventoryItemResponse toResponse(InventoryItem item, Boolean dup) {
+        return new InventoryItemResponse(
+                item.getId(),
+                item.getPartName(),
+                item.getLocalName(),
+                item.getSpecification(),
+                item.getDescription(),
+                item.getVehicleCategory(),
+                item.getBrand(),
+                item.getModel(),
+                item.getQuantity(),
+                item.getMinQuantity(),
+                item.getSellingPrice(),
+                item.getImages() == null ? List.of() : item.getImages(),
+                item.stockStatus(),
+                item.isActive(),
+                dup,
+                item.getCreatedAt(),
+                item.getUpdatedAt()
+        );
     }
 }

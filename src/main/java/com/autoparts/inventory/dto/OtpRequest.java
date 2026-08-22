@@ -1,5 +1,12 @@
 package com.autoparts.inventory.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import lombok.Getter;
+import lombok.Setter;
 
-public record OtpRequest(@NotBlank String phone) {}
+@Getter
+@Setter
+public class OtpRequest {
+    @NotBlank
+    private String phone;
+}

@@ -7,5 +7,5 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface UserLocationRepository extends JpaRepository<UserLocation, UUID> {
-    Optional<UserLocation> findByUserIdAndPrimaryTrue(UUID userId);
+    Optional<UserLocation> findByUserId(UUID userId);
 }

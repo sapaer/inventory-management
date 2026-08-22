@@ -3,6 +3,7 @@ package com.autoparts.inventory.controller;
 import com.autoparts.inventory.api.ApiEnvelope;
 import com.autoparts.inventory.enums.VehicleCategory;
 import com.autoparts.inventory.dto.AddPartRequest;
+import com.autoparts.inventory.dto.InventoryItemResponse;
 import com.autoparts.inventory.dto.QuantityUpdateRequest;
 import com.autoparts.inventory.dto.UpdatePartRequest;
 import com.autoparts.inventory.service.InventoryService;
@@ -22,7 +23,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -35,7 +35,7 @@ public class InventoryController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiEnvelope<List<Map<String, Object>>>> list(
+    public ResponseEntity<ApiEnvelope<List<InventoryItemResponse>>> list(
             @AuthenticationPrincipal UUID userId,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) List<VehicleCategory> vehicle,
@@ -45,7 +45,7 @@ public class InventoryController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> add(
+    public ResponseEntity<ApiEnvelope<InventoryItemResponse>> add(
             @AuthenticationPrincipal UUID userId,
             @Valid @RequestBody AddPartRequest req
     ) {
@@ -53,27 +53,17 @@ public class InventoryController {
     }
 
     @GetMapping("/low-stock")
-    public ResponseEntity<ApiEnvelope<List<Map<String, Object>>>> lowStock(@AuthenticationPrincipal UUID userId) {
+    public ResponseEntity<ApiEnvelope<List<InventoryItemResponse>>> lowStock(@AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(ApiEnvelope.ok(inventoryService.lowStock(userId)));
     }
 
-    @GetMapping("/history/{id}")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> history(
-            @AuthenticationPrincipal UUID userId,
-            @PathVariable UUID id,
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int limit
-    ) {
-        return ResponseEntity.ok(ApiEnvelope.ok(inventoryService.history(userId, id, page, limit)));
-    }
-
     @GetMapping("/{id}")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> get(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
+    public ResponseEntity<ApiEnvelope<InventoryItemResponse>> get(@AuthenticationPrincipal UUID userId, @PathVariable UUID id) {
         return ResponseEntity.ok(ApiEnvelope.ok(inventoryService.get(userId, id)));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> update(
+    public ResponseEntity<ApiEnvelope<InventoryItemResponse>> update(
             @AuthenticationPrincipal UUID userId,
             @PathVariable UUID id,
             @RequestBody UpdatePartRequest req
@@ -88,7 +78,7 @@ public class InventoryController {
     }
 
     @PatchMapping("/{id}/quantity")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> quantity(
+    public ResponseEntity<ApiEnvelope<InventoryItemResponse>> quantity(
             @AuthenticationPrincipal UUID userId,
             @PathVariable UUID id,
             @RequestBody QuantityUpdateRequest req

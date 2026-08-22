@@ -1,3 +1,11 @@
 package com.autoparts.inventory.dto;
 
-public record PresignRequest(String filename, String contentType) {}
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
+public class PresignRequest {
+    private String filename;
+    private String contentType;
+}

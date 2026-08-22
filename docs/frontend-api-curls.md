@@ -172,7 +172,45 @@ curl.exe -sS http://localhost:8080/api/v1/auth/profile
 curl.exe -sS -X DELETE http://localhost:8080/api/v1/auth/logout -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
-Clears the Redis refresh session. The access JWT stays valid until it expires (~24h).
+Clears the refresh session. The access JWT stays valid until it expires (~24h).
+
+### Multiple accounts on one phone
+
+A phone number can own several shop accounts. If `otp/verify` finds more than one account for the
+phone, it returns `needsAccountSelection` instead of tokens:
+
+```json
+{ "success": true, "data": { "needsAccountSelection": true, "phoneToken": "...", "accounts": [ { "id": "...", "shopName": "...", "status": "ACTIVE" } ] } }
+```
+
+```bash
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/accounts/select -H "Content-Type: application/json" -d "{\"phoneToken\":\"PHONE_TOKEN\",\"accountId\":\"ACCOUNT_ID\"}"
+```
+
+`phoneToken` is single-use and expires in 5 minutes (same window as the OTP). Selecting a deactivated
+account reactivates it, since it's proof of phone ownership.
+
+List / add / switch accounts while logged in (Bearer):
+
+```bash
+curl.exe -sS http://localhost:8080/api/v1/auth/accounts -H "Authorization: Bearer ACCESS_TOKEN"
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/accounts -H "Authorization: Bearer ACCESS_TOKEN"
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/accounts/switch -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"accountId\":\"ACCOUNT_ID\"}"
+```
+
+`switch` only works between accounts sharing the same phone number, and refuses a deactivated target
+(`409 ACCOUNT_DEACTIVATED`) — reactivate it via OTP verify/select instead.
+
+### Deactivate / delete account (Bearer)
+
+```bash
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/deactivate -H "Authorization: Bearer ACCESS_TOKEN"
+curl.exe -sS -X DELETE http://localhost:8080/api/v1/auth/account -H "Authorization: Bearer ACCESS_TOKEN"
+```
+
+`deactivate` is reversible — re-verifying OTP (or selecting/switching to the account) reactivates it.
+`DELETE /account` is a hard delete: it permanently removes the account and everything it owns
+(inventory, location, notifications). No undo.
 
 ---
 
@@ -249,11 +287,10 @@ curl.exe -sS -X PATCH http://localhost:8080/api/v1/inventory/ITEM_ID/quantity -H
 
 When quantity ≤ `minQuantity`, a low-stock notification is created (WhatsApp if Twilio is configured).
 
-### Low stock / history
+### Low stock
 
 ```bash
 curl.exe -sS http://localhost:8080/api/v1/inventory/low-stock -H "Authorization: Bearer ACCESS_TOKEN"
-curl.exe -sS "http://localhost:8080/api/v1/inventory/history/ITEM_ID?page=1&limit=20" -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
 ---
@@ -329,10 +366,15 @@ Success (when AWS is set): `{ "upload_url", "public_url", "key", "filename" }`. 
 | DELETE | `/api/v1/auth/logout` | Bearer |
 | GET | `/api/v1/auth/profile` | Bearer |
 | PUT | `/api/v1/auth/profile` | Bearer |
+| POST | `/api/v1/auth/accounts/select` | public (phoneToken) |
+| GET | `/api/v1/auth/accounts` | Bearer |
+| POST | `/api/v1/auth/accounts` | Bearer |
+| POST | `/api/v1/auth/accounts/switch` | Bearer |
+| POST | `/api/v1/auth/deactivate` | Bearer |
+| DELETE | `/api/v1/auth/account` | Bearer |
 | GET | `/api/v1/inventory` | Bearer |
 | POST | `/api/v1/inventory` | Bearer |
 | GET | `/api/v1/inventory/low-stock` | Bearer |
-| GET | `/api/v1/inventory/history/{id}` | Bearer |
 | GET | `/api/v1/inventory/{id}` | Bearer |
 | PUT | `/api/v1/inventory/{id}` | Bearer |
 | DELETE | `/api/v1/inventory/{id}` | Bearer |

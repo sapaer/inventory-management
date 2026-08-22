@@ -1,6 +1,8 @@
 package com.autoparts.inventory.controller;
 
 import com.autoparts.inventory.api.ApiEnvelope;
+import com.autoparts.inventory.dto.NotificationResponse;
+import com.autoparts.inventory.dto.PageResponse;
 import com.autoparts.inventory.service.NotificationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -11,7 +13,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -24,7 +25,7 @@ public class NotificationController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> list(
+    public ResponseEntity<ApiEnvelope<PageResponse<NotificationResponse>>> list(
             @AuthenticationPrincipal UUID userId,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int limit
@@ -33,7 +34,7 @@ public class NotificationController {
     }
 
     @PatchMapping("/{id}/read")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> markRead(
+    public ResponseEntity<ApiEnvelope<NotificationResponse>> markRead(
             @AuthenticationPrincipal UUID userId,
             @PathVariable UUID id
     ) {

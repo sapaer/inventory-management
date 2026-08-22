@@ -10,6 +10,8 @@ services:
     branch: feature/phase-1-java-backend
     healthCheckPath: /health
     envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: "prod"
       - key: DATABASE_URL
         sync: false
       - key: DEV_OTP_BYPASS

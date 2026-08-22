@@ -1,5 +1,13 @@
 package com.autoparts.inventory.dto;
 
 import com.autoparts.inventory.enums.ChangeType;
+import lombok.Getter;
+import lombok.Setter;
 
-public record QuantityUpdateRequest(int change, ChangeType changeType, String note) {}
+@Getter
+@Setter
+public class QuantityUpdateRequest {
+    private int change;
+    private ChangeType changeType;
+    private String note;
+}

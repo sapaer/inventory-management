@@ -6,6 +6,8 @@ import com.autoparts.inventory.client.SmsClient;
 import com.autoparts.inventory.client.WhatsAppClient;
 import com.autoparts.inventory.enums.NotificationChannel;
 import com.autoparts.inventory.enums.NotificationType;
+import com.autoparts.inventory.dto.NotificationResponse;
+import com.autoparts.inventory.dto.PageResponse;
 import com.autoparts.inventory.entity.InventoryItem;
 import com.autoparts.inventory.entity.Notification;
 import com.autoparts.inventory.entity.User;
@@ -19,8 +21,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -88,39 +88,34 @@ public class NotificationService {
         notifications.save(n);
     }
 
-    public Map<String, Object> list(UUID userId, int page, int limit) {
+    public PageResponse<NotificationResponse> list(UUID userId, int page, int limit) {
         if (page < 1) page = 1;
         if (limit <= 0) limit = 20;
         Page<Notification> rows = notifications.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(page - 1, limit));
-        List<Map<String, Object>> content = rows.getContent().stream().map(NotificationService::toDto).toList();
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("content", content);
-        out.put("page", page);
-        out.put("limit", limit);
-        out.put("total", rows.getTotalElements());
-        return out;
+        return new PageResponse<>(rows.getContent().stream().map(NotificationService::toResponse).toList(),
+                page, limit, rows.getTotalElements());
     }
 
     @Transactional
-    public Map<String, Object> markRead(UUID userId, UUID id) {
+    public NotificationResponse markRead(UUID userId, UUID id) {
         Notification n = notifications.findById(id)
                 .filter(row -> row.getUserId().equals(userId))
                 .orElseThrow(() -> AppException.notFound("Notification not found"));
         n.setRead(true);
-        return toDto(notifications.save(n));
+        return toResponse(notifications.save(n));
     }
 
-    private static Map<String, Object> toDto(Notification n) {
-        Map<String, Object> dto = new LinkedHashMap<>();
-        dto.put("id", n.getId());
-        dto.put("type", n.getType());
-        dto.put("title", n.getTitle());
-        dto.put("body", n.getBody());
-        dto.put("data", n.getData());
-        dto.put("channel", n.getChannel());
-        dto.put("isRead", n.isRead());
-        dto.put("sentAt", n.getSentAt());
-        dto.put("createdAt", n.getCreatedAt());
-        return dto;
+    private static NotificationResponse toResponse(Notification n) {
+        return new NotificationResponse(
+                n.getId(),
+                n.getType(),
+                n.getTitle(),
+                n.getBody(),
+                n.getData(),
+                n.getChannel(),
+                n.isRead(),
+                n.getSentAt(),
+                n.getCreatedAt()
+        );
     }
 }

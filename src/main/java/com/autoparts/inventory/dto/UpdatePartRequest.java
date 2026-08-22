@@ -1,20 +1,24 @@
 package com.autoparts.inventory.dto;
 
 import com.autoparts.inventory.enums.VehicleCategory;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.List;
 
-public record UpdatePartRequest(
-        String partName,
-        String localName,
-        String specification,
-        String description,
-        VehicleCategory vehicleCategory,
-        String brand,
-        String model,
-        Integer minQuantity,
-        BigDecimal sellingPrice,
-        BigDecimal costPrice,
-        List<String> images
-) {}
+@Getter
+@Setter
+public class UpdatePartRequest {
+    private String partName;
+    private String localName;
+    private String specification;
+    private String description;
+    private VehicleCategory vehicleCategory;
+    private String brand;
+    private String model;
+    private Integer minQuantity;
+    private BigDecimal sellingPrice;
+    private BigDecimal costPrice;
+    private List<String> images;
+}

@@ -2,9 +2,15 @@ package com.autoparts.inventory.service;
 
 import com.autoparts.inventory.api.AppException;
 import com.autoparts.inventory.config.AppProperties;
+import com.autoparts.inventory.config.AwsProperties;
+import com.autoparts.inventory.config.GoogleProperties;
+import com.autoparts.inventory.config.JwtProperties;
+import com.autoparts.inventory.config.SmsProperties;
+import com.autoparts.inventory.config.TwilioProperties;
+import com.autoparts.inventory.config.WhatsAppProperties;
+import com.autoparts.inventory.dto.AuthResponse;
 import com.autoparts.inventory.repository.UserLocationRepository;
 import com.autoparts.inventory.repository.UserRepository;
-import com.autoparts.inventory.repository.UserVehicleCategoryRepository;
 import com.autoparts.inventory.security.JwtService;
 import com.autoparts.inventory.store.AppKvStore;
 import org.junit.jupiter.api.Test;
@@ -26,7 +32,6 @@ import static org.mockito.Mockito.verify;
 class AuthServiceTest {
     @Mock UserRepository users;
     @Mock UserLocationRepository locations;
-    @Mock UserVehicleCategoryRepository vehicleCategories;
     @Mock AppKvStore cache;
     @Mock JwtService jwt;
     @Mock OtpDispatcher otp;
@@ -36,18 +41,18 @@ class AuthServiceTest {
                 true,
                 bypass,
                 "000000",
-                new AppProperties.Jwt("QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=", 24, 30),
-                new AppProperties.Aws("b", "ap-south-1", "k", "s", "http://localhost"),
-                new AppProperties.WhatsApp("https://graph.facebook.com/v25.0", "", ""),
-                new AppProperties.Sms("twilio", "", ""),
-                new AppProperties.Twilio("", "", "", "", "", ""),
-                new AppProperties.Google("")
+                new JwtProperties("QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=", 24, 30),
+                new AwsProperties("b", "ap-south-1", "k", "s", "http://localhost"),
+                new WhatsAppProperties("https://graph.facebook.com/v25.0", "", ""),
+                new SmsProperties("twilio", "", ""),
+                new TwilioProperties("", "", "", "", "", ""),
+                new GoogleProperties("")
         );
     }
 
     @Test
     void requestOtpDoesNotStoreWhenDeliveryFails() {
-        AuthService svc = new AuthService(users, locations, vehicleCategories, cache, jwt, otp, props(false));
+        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(false));
         doThrow(new IllegalStateException("no otp delivery channel available")).when(otp).sendOtp(anyString(), anyString());
 
         AppException ex = assertThrows(AppException.class, () -> svc.requestOtp("8619544044"));
@@ -58,7 +63,7 @@ class AuthServiceTest {
 
     @Test
     void requestOtpBypassSkipsDeliveryAndStoresFixedCode() {
-        AuthService svc = new AuthService(users, locations, vehicleCategories, cache, jwt, otp, props(true));
+        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(true));
 
         svc.requestOtp("8619544044");
 
@@ -68,9 +73,8 @@ class AuthServiceTest {
 
     @Test
     void verifyOtpBypassAcceptsDevCode() {
-        AuthService svc = new AuthService(users, locations, vehicleCategories, cache, jwt, otp, props(true));
-        org.mockito.Mockito.when(users.existsByPhone("8619544044")).thenReturn(false);
-        org.mockito.Mockito.when(users.findByPhone("8619544044")).thenReturn(java.util.Optional.empty());
+        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(true));
+        org.mockito.Mockito.when(users.findAllByPhone("8619544044")).thenReturn(java.util.List.of());
         org.mockito.Mockito.when(users.save(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> {
             com.autoparts.inventory.entity.User created = inv.getArgument(0);
             created.setId(java.util.UUID.fromString("11111111-1111-1111-1111-111111111111"));
@@ -78,15 +82,13 @@ class AuthServiceTest {
         });
         org.mockito.Mockito.when(jwt.generateAccessToken(org.mockito.ArgumentMatchers.any(), eq("8619544044")))
                 .thenReturn("access");
-        org.mockito.Mockito.when(locations.findByUserIdAndPrimaryTrue(org.mockito.ArgumentMatchers.any()))
+        org.mockito.Mockito.when(locations.findByUserId(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(java.util.Optional.empty());
-        org.mockito.Mockito.when(vehicleCategories.findByUserId(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(java.util.List.of());
 
-        var out = svc.verifyOtp("8619544044", "000000");
+        AuthResponse out = (AuthResponse) svc.verifyOtp("8619544044", "000000");
 
-        assertEquals(Boolean.TRUE, out.get("isNewUser"));
-        assertEquals("access", out.get("accessToken"));
+        assertEquals(true, out.isNewUser());
+        assertEquals("access", out.getAccessToken());
         verify(cache).delete("otp:8619544044", "otp_attempts:8619544044");
         verify(cache, never()).get("otp:8619544044");
     }
