@@ -2,7 +2,7 @@
 <Configuration status="WARN" monitorInterval="30">
     <Properties>
         <Property name="LOG_PATTERN">%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</Property>
-        <Property name="LOG_DIR">${sys:LOG_DIR:-logs}</Property>
+        <Property name="LOGS_DIR">${sys:LOG_DIR:-logs}</Property>
     </Properties>
 
     <Appenders>
@@ -11,8 +11,8 @@
         </Console>
 
         <RollingFile name="RollingFile"
-                     fileName="${LOG_DIR}/inventory-management.log"
-                     filePattern="${LOG_DIR}/inventory-management-%d{yyyy-MM-dd}-%i.log.gz">
+                     fileName="${LOGS_DIR}/inventory-management.log"
+                     filePattern="${LOGS_DIR}/inventory-management-%d{yyyy-MM-dd}-%i.log.gz">
             <PatternLayout pattern="${LOG_PATTERN}"/>
             <Policies>
                 <TimeBasedTriggeringPolicy interval="1" modulate="true"/>
