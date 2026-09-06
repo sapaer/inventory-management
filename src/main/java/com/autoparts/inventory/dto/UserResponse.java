@@ -32,4 +32,7 @@ public class UserResponse {
     private final BigDecimal geoLat;
     private final BigDecimal geoLng;
     private final List<VehicleCategory> vehicleCategories;
+
+    /** Never the hash itself — just whether one is set, so the UI can offer "set" vs "change". */
+    private final boolean hasPassword;
 }

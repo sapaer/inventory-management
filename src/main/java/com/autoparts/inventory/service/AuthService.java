@@ -19,6 +19,7 @@ import com.autoparts.inventory.security.JwtService;
 import com.autoparts.inventory.store.AppKvStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +44,7 @@ public class AuthService {
     private final JwtService jwt;
     private final OtpDispatcher otp;
     private final AppProperties props;
+    private final PasswordEncoder passwordEncoder;
 
     public AuthService(
             UserRepository users,
@@ -50,7 +52,8 @@ public class AuthService {
             AppKvStore cache,
             JwtService jwt,
             OtpDispatcher otp,
-            AppProperties props
+            AppProperties props,
+            PasswordEncoder passwordEncoder
     ) {
         this.users = users;
         this.locations = locations;
@@ -58,6 +61,7 @@ public class AuthService {
         this.jwt = jwt;
         this.otp = otp;
         this.props = props;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public void requestOtp(String phone) {
@@ -99,21 +103,7 @@ public class AuthService {
 
     @Transactional
     public AuthResult verifyOtp(String phone, String submitted) {
-        boolean bypassCode = props.isDevOtpBypass()
-                && submitted != null
-                && submitted.equals(props.effectiveDevOtpCode());
-        if (!bypassCode) {
-            String stored = cache.get("otp:" + phone);
-            if (stored == null || stored.isBlank()) {
-                throw AppException.badRequest("OTP_EXPIRED", "OTP has expired. Please request a new one.");
-            }
-            if (!stored.equals(submitted)) {
-                throw AppException.badRequest("OTP_INVALID", "Incorrect OTP. Please try again.");
-            }
-        } else {
-            log.warn("DEV OTP bypass accepted phone={}", phone);
-        }
-        cache.delete("otp:" + phone, "otp_attempts:" + phone);
+        verifyOtpCodeOrThrow(phone, submitted);
 
         List<User> matches = users.findAllByPhone(phone);
         if (matches.isEmpty()) {
@@ -129,6 +119,53 @@ public class AuthService {
             return new AccountSelectionResponse(phoneToken, matches.stream().map(this::toAccountSummary).toList());
         }
         return tokens(reactivateAndVerify(matches.get(0)), false);
+    }
+
+    private void verifyOtpCodeOrThrow(String phone, String submitted) {
+        boolean bypassCode = props.isDevOtpBypass()
+                && submitted != null
+                && submitted.equals(props.effectiveDevOtpCode());
+        if (!bypassCode) {
+            String stored = cache.get("otp:" + phone);
+            if (stored == null || stored.isBlank()) {
+                throw AppException.badRequest("OTP_EXPIRED", "OTP has expired. Please request a new one.");
+            }
+            if (!stored.equals(submitted)) {
+                throw AppException.badRequest("OTP_INVALID", "Incorrect OTP. Please try again.");
+            }
+        } else {
+            log.warn("DEV OTP bypass accepted phone={}", phone);
+        }
+        cache.delete("otp:" + phone, "otp_attempts:" + phone);
+    }
+
+    @Transactional
+    public void setPassword(UUID userId, String password) {
+        User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
+        if (user.getPasswordHash() != null) {
+            throw AppException.conflict("PASSWORD_ALREADY_SET", "Password already set. Use change password instead.");
+        }
+        user.setPasswordHash(passwordEncoder.encode(password));
+        users.save(user);
+        log.info("password set userId={}", userId);
+    }
+
+    public void requestPasswordChangeOtp(UUID userId) {
+        User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
+        requestOtp(user.getPhone());
+    }
+
+    @Transactional
+    public void changePassword(UUID userId, String otp, String newPassword) {
+        User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
+        if (user.getPasswordHash() == null) {
+            throw AppException.badRequest("PASSWORD_NOT_SET", "No password set yet. Add one first.");
+        }
+        verifyOtpCodeOrThrow(user.getPhone(), otp);
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        users.save(user);
+        cache.delete("session:" + userId);
+        log.info("password changed userId={}", userId);
     }
 
     /** Re-verifying OTP proves phone ownership again, so it also reactivates a deactivated account. */
@@ -294,7 +331,8 @@ public class AuthService {
                 loc == null ? null : loc.getPincode(),
                 loc == null ? null : loc.getGeoLat(),
                 loc == null ? null : loc.getGeoLng(),
-                user.getVehicleCategories()
+                user.getVehicleCategories(),
+                user.getPasswordHash() != null
         );
     }
 
