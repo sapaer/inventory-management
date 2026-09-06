@@ -17,6 +17,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Duration;
 
@@ -35,6 +37,7 @@ class AuthServiceTest {
     @Mock AppKvStore cache;
     @Mock JwtService jwt;
     @Mock OtpDispatcher otp;
+    PasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     private static AppProperties props(boolean bypass) {
         return new AppProperties(
@@ -52,7 +55,7 @@ class AuthServiceTest {
 
     @Test
     void requestOtpDoesNotStoreWhenDeliveryFails() {
-        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(false));
+        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(false), passwordEncoder);
         doThrow(new IllegalStateException("no otp delivery channel available")).when(otp).sendOtp(anyString(), anyString());
 
         AppException ex = assertThrows(AppException.class, () -> svc.requestOtp("8619544044"));
@@ -63,7 +66,7 @@ class AuthServiceTest {
 
     @Test
     void requestOtpBypassSkipsDeliveryAndStoresFixedCode() {
-        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(true));
+        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(true), passwordEncoder);
 
         svc.requestOtp("8619544044");
 
@@ -73,7 +76,7 @@ class AuthServiceTest {
 
     @Test
     void verifyOtpBypassAcceptsDevCode() {
-        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(true));
+        AuthService svc = new AuthService(users, locations, cache, jwt, otp, props(true), passwordEncoder);
         org.mockito.Mockito.when(users.findAllByPhone("8619544044")).thenReturn(java.util.List.of());
         org.mockito.Mockito.when(users.save(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> {
             com.autoparts.inventory.entity.User created = inv.getArgument(0);

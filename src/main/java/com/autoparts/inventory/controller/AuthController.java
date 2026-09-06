@@ -7,11 +7,13 @@ import com.autoparts.inventory.dto.AccountSummaryResponse;
 import com.autoparts.inventory.dto.AccountSwitchRequest;
 import com.autoparts.inventory.dto.AuthResponse;
 import com.autoparts.inventory.dto.AuthResult;
+import com.autoparts.inventory.dto.ChangePasswordRequest;
 import com.autoparts.inventory.dto.OtpRequest;
 import com.autoparts.inventory.dto.OtpRequestedResponse;
 import com.autoparts.inventory.dto.OtpVerifyRequest;
 import com.autoparts.inventory.dto.ProfileUpdateRequest;
 import com.autoparts.inventory.dto.RefreshTokenRequest;
+import com.autoparts.inventory.dto.SetPasswordRequest;
 import com.autoparts.inventory.dto.TokenRefreshResponse;
 import com.autoparts.inventory.dto.UserResponse;
 import com.autoparts.inventory.service.AuthService;
@@ -98,6 +100,30 @@ public class AuthController {
     @PostMapping("/accounts")
     public ResponseEntity<ApiEnvelope<AuthResponse>> createAccount(@AuthenticationPrincipal UUID userId) {
         return ResponseEntity.ok(ApiEnvelope.ok(authService.createAccount(userId)));
+    }
+
+    @PostMapping("/password")
+    public ResponseEntity<ApiEnvelope<Void>> setPassword(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody SetPasswordRequest req
+    ) {
+        authService.setPassword(userId, req.getPassword());
+        return ResponseEntity.ok(ApiEnvelope.ok(null));
+    }
+
+    @PostMapping("/password/change/request")
+    public ResponseEntity<ApiEnvelope<OtpRequestedResponse>> requestPasswordChangeOtp(@AuthenticationPrincipal UUID userId) {
+        authService.requestPasswordChangeOtp(userId);
+        return ResponseEntity.ok(ApiEnvelope.ok(new OtpRequestedResponse("OTP sent", "300")));
+    }
+
+    @PutMapping("/password")
+    public ResponseEntity<ApiEnvelope<Void>> changePassword(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody ChangePasswordRequest req
+    ) {
+        authService.changePassword(userId, req.getOtp(), req.getNewPassword());
+        return ResponseEntity.ok(ApiEnvelope.ok(null));
     }
 
     @PostMapping("/deactivate")

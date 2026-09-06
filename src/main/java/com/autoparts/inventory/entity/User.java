@@ -58,6 +58,10 @@ public class User {
     @Column(name = "deactivated_at")
     private Instant deactivatedAt;
 
+    /** Null means this account has never set a password and can only log in via OTP. */
+    @Column(name = "password_hash")
+    private String passwordHash;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "vehicle_categories", nullable = false, columnDefinition = "json")
     private List<VehicleCategory> vehicleCategories = new ArrayList<>();
