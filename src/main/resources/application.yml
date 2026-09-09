@@ -1,11 +1,30 @@
 server:
   port: ${PORT:8080}
+  # Trust Render's proxy so getRemoteAddr()/X-Forwarded-For resolve to the real client IP.
+  forward-headers-strategy: framework
 
 spring:
   application:
     name: inventory-management
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+  # SMTP for monitoring alert emails. Host unset (#{null}) => no JavaMailSender bean,
+  # so alerts just log at WARN. For Gmail: SMTP_HOST=smtp.gmail.com, SMTP_USERNAME=you@gmail.com,
+  # SMTP_PASSWORD=<16-char app password>.
+  mail:
+    host: ${SMTP_HOST:#{null}}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:#{null}}
+    password: ${SMTP_PASSWORD:#{null}}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
   jpa:
     hibernate:
       ddl-auto: none
@@ -17,6 +36,30 @@ spring:
 
 app:
   log-otp: ${LOG_OTP:true}
+  # When the daily "purge accounts past their 30-day deletion grace" job runs.
+  account-purge-cron: ${ACCOUNT_PURGE_CRON:0 30 3 * * *}
+  security:
+    # Per-request check that rejects access tokens of deactivated / pending-deletion
+    # accounts immediately. Set false to skip the lookup and fall back to token expiry (~24h).
+    revocation-check-enabled: ${TOKEN_REVOCATION_CHECK:true}
+  monitoring:
+    # Spike detection over a rolling window -> WARN log + email (if SMTP configured).
+    enabled: ${MONITORING_ENABLED:true}
+    window-minutes: ${MONITORING_WINDOW_MINUTES:5}
+    http-5xx-threshold: ${MONITORING_5XX_THRESHOLD:10}
+    http-4xx-threshold: ${MONITORING_4XX_THRESHOLD:50}
+    otp-failure-threshold: ${MONITORING_OTP_FAILURE_THRESHOLD:1}
+    alert-cooldown-minutes: ${MONITORING_ALERT_COOLDOWN_MINUTES:30}
+    alert-to: ${MONITORING_ALERT_TO:#{null}}
+    alert-from: ${MONITORING_ALERT_FROM:#{null}}
+  rate-limit:
+    enabled: ${RATE_LIMIT_ENABLED:true}
+    ip-requests-per-minute: ${RATE_LIMIT_IP_PER_MIN:120}
+    auth-ip-requests-per-minute: ${RATE_LIMIT_AUTH_IP_PER_MIN:20}
+    otp-request-per-phone: ${RATE_LIMIT_OTP_REQUEST_PER_PHONE:5}
+    otp-request-window-seconds: ${RATE_LIMIT_OTP_REQUEST_WINDOW:600}
+    otp-verify-per-phone: ${RATE_LIMIT_OTP_VERIFY_PER_PHONE:5}
+    otp-verify-window-seconds: ${RATE_LIMIT_OTP_VERIFY_WINDOW:600}
   # Local only: skip WhatsApp/SMS and accept DEV_OTP_CODE. Keep false to test real OTP delivery.
   dev-otp-bypass: ${DEV_OTP_BYPASS:false}
   dev-otp-code: ${DEV_OTP_CODE:000000}

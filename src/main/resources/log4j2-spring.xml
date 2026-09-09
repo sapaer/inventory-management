@@ -20,6 +20,22 @@
             </Policies>
             <DefaultRolloverStrategy max="14"/>
         </RollingFile>
+
+        <!-- Ships structured JSON logs to Better Stack. Defined (and its worker thread
+             started) only when LOG_SHIP_TOKEN is set — see LogShippingBootstrap. -->
+        <SystemPropertyArbiter propertyName="log.ship.enabled" propertyValue="true">
+            <Http name="BetterStack"
+                  url="${sys:log.ship.url:-https://in.logs.betterstack.com}"
+                  connectTimeoutMillis="4000"
+                  readTimeoutMillis="4000">
+                <Property name="Authorization" value="Bearer ${sys:log.ship.token:-}"/>
+                <JsonTemplateLayout eventTemplateUri="classpath:EcsLayout.json"/>
+            </Http>
+            <!-- blocking=false: drop logs rather than stall a request if the endpoint is down. -->
+            <Async name="BetterStackAsync" bufferSize="1024" blocking="false">
+                <AppenderRef ref="BetterStack"/>
+            </Async>
+        </SystemPropertyArbiter>
     </Appenders>
 
     <Loggers>
@@ -35,6 +51,9 @@
             <SpringProfile name="prod">
                 <AppenderRef ref="RollingFile"/>
             </SpringProfile>
+            <SystemPropertyArbiter propertyName="log.ship.enabled" propertyValue="true">
+                <AppenderRef ref="BetterStackAsync"/>
+            </SystemPropertyArbiter>
         </Root>
     </Loggers>
 </Configuration>

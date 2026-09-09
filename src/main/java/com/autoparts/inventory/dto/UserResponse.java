@@ -9,6 +9,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,12 +19,16 @@ import java.util.UUID;
 public class UserResponse {
     private final UUID id;
     private final String phone;
+    private final String firstName;
+    private final String lastName;
     private final String name;
     private final String shopName;
     private final String email;
     private final BusinessType businessType;
     private final OnboardingStatus onboardingStatus;
     private final AccountStatus status;
+    /** Set only when status is PENDING_DELETION — when the deletion was requested. */
+    private final Instant deletionRequestedAt;
     private final String address;
     private final String area;
     private final String city;

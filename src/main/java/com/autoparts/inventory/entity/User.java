@@ -33,6 +33,13 @@ public class User {
     @Column(nullable = false, length = 10)
     private String phone;
 
+    @Column(name = "first_name", length = 50)
+    private String firstName;
+
+    @Column(name = "last_name", length = 50)
+    private String lastName;
+
+    /** Legacy/display name, kept in sync with first + last name. */
     private String name;
 
     @Column(name = "shop_name")
@@ -57,6 +64,10 @@ public class User {
 
     @Column(name = "deactivated_at")
     private Instant deactivatedAt;
+
+    /** When DELETE /account was called. Row is purged 30 days after this unless the user returns. */
+    @Column(name = "deletion_requested_at")
+    private Instant deletionRequestedAt;
 
     /** Null means this account has never set a password and can only log in via OTP. */
     @Column(name = "password_hash")
@@ -88,5 +99,18 @@ public class User {
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();
+    }
+
+    /** Set first/last name and refresh the legacy {@link #name} field from them. */
+    public void applyName(String firstName, String lastName) {
+        if (firstName != null) {
+            this.firstName = firstName.isBlank() ? null : firstName.trim();
+        }
+        if (lastName != null) {
+            this.lastName = lastName.isBlank() ? null : lastName.trim();
+        }
+        String combined = ((this.firstName == null ? "" : this.firstName) + " "
+                + (this.lastName == null ? "" : this.lastName)).trim();
+        this.name = combined.isEmpty() ? null : combined;
     }
 }

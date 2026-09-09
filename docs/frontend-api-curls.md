@@ -59,6 +59,18 @@ Expected `200`:
 
 ## Auth
 
+### Rate limiting
+
+Two independent layers, both fixed-window and backed by `app_kv_store`:
+
+- **Per IP** (all endpoints): `120` requests/min; `20` requests/min on `/api/v1/auth/**`.
+  Over the cap → `429 RATE_LIMITED`. Client IP is taken from `X-Forwarded-For` (Render's proxy).
+- **Per phone** (OTP): `5` sends / 10 min (`OTP_MAX_ATTEMPTS`) and `5` wrong verifications / 10 min
+  (`OTP_MAX_VERIFY_ATTEMPTS`). A successful verify resets both counters.
+
+Tunable via `RATE_LIMIT_*` env vars (see `application.yml`); set `RATE_LIMIT_ENABLED=false` to
+disable the per-IP layer (per-phone OTP limits always apply).
+
 ### Request OTP (public)
 
 ```bash
@@ -87,15 +99,18 @@ curl.exe -sS -X POST http://localhost:8080/api/v1/auth/otp/request -H "Content-T
 
 Phone must match `^[6-9]\\d{9}$`.
 
-Other errors: `OTP_DELIVERY_FAILED` (400), `OTP_MAX_ATTEMPTS` (429, 5 requests / 10 minutes).
+Other errors: `OTP_DELIVERY_FAILED` (400), `OTP_MAX_ATTEMPTS` (429, 5 requests / 10 minutes per phone).
 
 ### Verify OTP (public)
 
 ```bash
 curl.exe -sS -X POST http://localhost:8080/api/v1/auth/otp/verify ^
   -H "Content-Type: application/json" ^
-  -d "{\"phone\":\"9876543210\",\"otp\":\"123456\"}"
+  -d "{\"phone\":\"9876543210\",\"otp\":\"123456\",\"firstName\":\"Ravi\",\"lastName\":\"Kumar\"}"
 ```
+
+`firstName` / `lastName` are optional and only used when this call creates a new account
+(each max 50 chars). For an existing account they are ignored — update names via `PUT /profile`.
 
 Success `200`:
 
@@ -109,7 +124,9 @@ Success `200`:
     "user": {
       "id": "uuid",
       "phone": "9876543210",
-      "name": null,
+      "firstName": "Ravi",
+      "lastName": "Kumar",
+      "name": "Ravi Kumar",
       "shopName": null,
       "onboardingStatus": "REGISTERED"
     }
@@ -126,6 +143,10 @@ curl.exe -sS -X POST http://localhost:8080/api/v1/auth/otp/verify -H "Content-Ty
 curl.exe -sS -X POST http://localhost:8080/api/v1/auth/otp/verify -H "Content-Type: application/json" -d "{\"phone\":\"9876543210\",\"otp\":\"12\"}"
 # 400 VALIDATION_ERROR  field=otp  size must be between 6 and 6
 ```
+
+After 5 wrong codes for a phone within 10 minutes: `429 OTP_MAX_VERIFY_ATTEMPTS` — the caller
+must request a fresh OTP. A correct code clears the counter. Same limit guards the OTP-verified
+`PUT /password` and `POST /password/forgot/reset` flows.
 
 ### Refresh token (public)
 
@@ -154,9 +175,11 @@ curl.exe -sS http://localhost:8080/api/v1/auth/profile -H "Authorization: Bearer
 curl.exe -sS -X PUT http://localhost:8080/api/v1/auth/profile ^
   -H "Authorization: Bearer ACCESS_TOKEN" ^
   -H "Content-Type: application/json" ^
-  -d "{\"name\":\"Aakash\",\"shopName\":\"Test Auto Parts\",\"email\":\"shop@example.com\",\"businessType\":\"SHOP\",\"address\":\"Shop 1\",\"area\":\"Sector 14\",\"city\":\"Gurgaon\",\"state\":\"Haryana\",\"pincode\":\"122001\",\"vehicleCategories\":[\"FOUR_WHEELER\"]}"
+  -d "{\"firstName\":\"Aakash\",\"lastName\":\"Sharma\",\"shopName\":\"Test Auto Parts\",\"email\":\"shop@example.com\",\"businessType\":\"SHOP\",\"address\":\"Shop 1\",\"area\":\"Sector 14\",\"city\":\"Gurgaon\",\"state\":\"Haryana\",\"pincode\":\"122001\",\"vehicleCategories\":[\"FOUR_WHEELER\"]}"
 ```
 
+`firstName` / `lastName` (each max 50) replace the older single `name` field; `name` is still
+returned as `"first last"` for display. Sending `name` alone still works if neither part is given.  
 `businessType`: `SHOP` | `SERVICE_CENTER` | `BOTH`  
 `vehicleCategories`: `TWO_WHEELER` | `FOUR_WHEELER` | `THREE_WHEELER` | `COMMERCIAL` | `EV`  
 `onboardingStatus`: `REGISTERED` → `PROFILED` after name + shopName.
@@ -173,6 +196,44 @@ curl.exe -sS -X DELETE http://localhost:8080/api/v1/auth/logout -H "Authorizatio
 ```
 
 Clears the refresh session. The access JWT stays valid until it expires (~24h).
+
+### Password auth
+
+Passwords are optional and shared across every account on a phone number. `hasPassword` in the
+profile / auth `user` object tells the UI whether to show "set" vs "change". Password is 8–100 chars.
+
+**Login with password (public)** — alternative to OTP for a number that already has one set:
+
+```bash
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/password/login -H "Content-Type: application/json" -d "{\"phone\":\"9876543210\",\"password\":\"s3cret-pass\"}"
+# 200 -> same shape as otp/verify (tokens, or needsAccountSelection for multi-account)
+# 400 PASSWORD_NOT_SET   number exists but no password yet
+# 401 UNAUTHORIZED       unknown number or wrong password
+```
+
+**Set password (Bearer)** — first time only:
+
+```bash
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/password -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"password\":\"s3cret-pass\"}"
+# 409 PASSWORD_ALREADY_SET  -> use change instead
+```
+
+**Change password (Bearer)** — OTP-verified:
+
+```bash
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/password/change/request -H "Authorization: Bearer ACCESS_TOKEN"
+curl.exe -sS -X PUT  http://localhost:8080/api/v1/auth/password -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"otp\":\"123456\",\"newPassword\":\"new-s3cret\"}"
+```
+
+**Forgot password (public)** — OTP to the number, then reset:
+
+```bash
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/password/forgot/request -H "Content-Type: application/json" -d "{\"phone\":\"9876543210\"}"
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/password/forgot/reset   -H "Content-Type: application/json" -d "{\"phone\":\"9876543210\",\"otp\":\"123456\",\"newPassword\":\"new-s3cret\"}"
+# 401 UNAUTHORIZED  no account for this number (request sends no OTP in that case)
+```
+
+Changing or resetting a password invalidates existing refresh sessions on the affected accounts.
 
 ### Multiple accounts on one phone
 
@@ -194,23 +255,54 @@ List / add / switch accounts while logged in (Bearer):
 
 ```bash
 curl.exe -sS http://localhost:8080/api/v1/auth/accounts -H "Authorization: Bearer ACCESS_TOKEN"
-curl.exe -sS -X POST http://localhost:8080/api/v1/auth/accounts -H "Authorization: Bearer ACCESS_TOKEN"
+curl.exe -sS -X POST http://localhost:8080/api/v1/auth/accounts -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"firstName\":\"Ravi\",\"lastName\":\"Kumar\"}"
 curl.exe -sS -X POST http://localhost:8080/api/v1/auth/accounts/switch -H "Authorization: Bearer ACCESS_TOKEN" -H "Content-Type: application/json" -d "{\"accountId\":\"ACCOUNT_ID\"}"
 ```
 
 `switch` only works between accounts sharing the same phone number, and refuses a deactivated target
 (`409 ACCOUNT_DEACTIVATED`) — reactivate it via OTP verify/select instead.
 
-### Deactivate / delete account (Bearer)
+### Deactivate account (Bearer)
 
 ```bash
 curl.exe -sS -X POST http://localhost:8080/api/v1/auth/deactivate -H "Authorization: Bearer ACCESS_TOKEN"
-curl.exe -sS -X DELETE http://localhost:8080/api/v1/auth/account -H "Authorization: Bearer ACCESS_TOKEN"
 ```
 
 `deactivate` is reversible — re-verifying OTP (or selecting/switching to the account) reactivates it.
-`DELETE /account` is a hard delete: it permanently removes the account and everything it owns
-(inventory, location, notifications). No undo.
+The current access token stops working **immediately** (not just the refresh session): the next
+call returns `401 UNAUTHORIZED` "Session ended. Please sign in again." Reactivating clears that.
+
+### Export account data (Bearer)
+
+```bash
+curl.exe -sS -X GET http://localhost:8080/api/v1/auth/account/export -H "Authorization: Bearer ACCESS_TOKEN" -o account-export.csv
+```
+
+Returns `text/csv` (not the JSON envelope) with `Content-Disposition: attachment`. One document
+with a `PROFILE` section (phone, name, shop, business type, location, vehicle categories, timestamps)
+and an `INVENTORY` section — every part the account owns, active and soft-deleted, including
+`cost_price`.
+
+### Delete account (Bearer)
+
+```bash
+curl.exe -sS -X DELETE http://localhost:8080/api/v1/auth/account -H "Authorization: Bearer ACCESS_TOKEN"
+```
+
+`DELETE /account` is a **soft delete with a 30-day grace period**, not an immediate wipe:
+
+```json
+{ "success": true, "data": { "status": "PENDING_DELETION", "deletionRequestedAt": "2026-09-09T...Z", "purgeAfter": "2026-10-09T...Z" } }
+```
+
+- The account moves to `PENDING_DELETION`; the refresh session is cleared and the current
+  access token is revoked immediately — every further call returns `401 UNAUTHORIZED`.
+- A daily job hard-deletes the account and everything it owns (inventory, location, notifications)
+  once `purgeAfter` passes. No undo after that.
+- **Recovery inside the 30 days:** just log in again — OTP verify or password login flips the
+  account back to `ACTIVE`. (There is no token-based "restore" call; the token is already gone.)
+- `switch` to a `PENDING_DELETION` account is refused with `409 ACCOUNT_PENDING_DELETION`.
+- `GET /profile` returns `status` and `deletionRequestedAt` so the UI can show a "deleting on X" banner.
 
 ---
 
@@ -344,13 +436,18 @@ Success (when AWS is set): `{ "upload_url", "public_url", "key", "filename" }`. 
 | 400 | `OTP_EXPIRED` | No OTP in Redis |
 | 400 | `OTP_INVALID` | Wrong OTP |
 | 400 | `OTP_DELIVERY_FAILED` | WhatsApp/SMS send failed |
+| 400 | `PASSWORD_NOT_SET` | Password login/change on a number with no password |
+| 409 | `PASSWORD_ALREADY_SET` | `POST /password` when one already exists |
+| 409 | `ACCOUNT_PENDING_DELETION` | `switch` to an account scheduled for deletion |
 | 400 | `INVALID_FILE_TYPE` | Presign not jpeg/png |
 | 400 | `AWS_NOT_CONFIGURED` | No S3 keys |
 | 401 | `UNAUTHORIZED` | Missing/invalid JWT or refresh token |
 | 404 | `NOT_FOUND` | Part, notification, or unknown route |
 | 405 | `METHOD_NOT_ALLOWED` | Wrong HTTP method |
 | 409 | `INSUFFICIENT_STOCK` | Quantity would go below 0 |
-| 429 | `OTP_MAX_ATTEMPTS` | More than 5 OTP requests in 10 minutes |
+| 429 | `OTP_MAX_ATTEMPTS` | More than 5 OTP requests in 10 minutes (per phone) |
+| 429 | `OTP_MAX_VERIFY_ATTEMPTS` | More than 5 wrong OTP submissions in 10 minutes (per phone) |
+| 429 | `RATE_LIMITED` | Per-IP request cap exceeded (120/min overall, 20/min on `/api/v1/auth/**`) |
 | 500 | `SERVER_ERROR` | Unexpected |
 
 ---
@@ -363,6 +460,12 @@ Success (when AWS is set): `{ "upload_url", "public_url", "key", "filename" }`. 
 | POST | `/api/v1/auth/otp/request` | public |
 | POST | `/api/v1/auth/otp/verify` | public |
 | POST | `/api/v1/auth/token/refresh` | public |
+| POST | `/api/v1/auth/password/login` | public |
+| POST | `/api/v1/auth/password/forgot/request` | public |
+| POST | `/api/v1/auth/password/forgot/reset` | public |
+| POST | `/api/v1/auth/password` | Bearer |
+| POST | `/api/v1/auth/password/change/request` | Bearer |
+| PUT | `/api/v1/auth/password` | Bearer |
 | DELETE | `/api/v1/auth/logout` | Bearer |
 | GET | `/api/v1/auth/profile` | Bearer |
 | PUT | `/api/v1/auth/profile` | Bearer |
@@ -371,6 +474,7 @@ Success (when AWS is set): `{ "upload_url", "public_url", "key", "filename" }`. 
 | POST | `/api/v1/auth/accounts` | Bearer |
 | POST | `/api/v1/auth/accounts/switch` | Bearer |
 | POST | `/api/v1/auth/deactivate` | Bearer |
+| GET | `/api/v1/auth/account/export` | Bearer |
 | DELETE | `/api/v1/auth/account` | Bearer |
 | GET | `/api/v1/inventory` | Bearer |
 | POST | `/api/v1/inventory` | Bearer |

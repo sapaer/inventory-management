@@ -7,7 +7,7 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class OtpVerifyRequest {
+public class ForgotPasswordResetRequest {
     @NotBlank
     private String phone;
 
@@ -15,10 +15,7 @@ public class OtpVerifyRequest {
     @Size(min = 6, max = 6)
     private String otp;
 
-    /** Optional — captured only when this OTP verification creates a new account. */
-    @Size(max = 50)
-    private String firstName;
-
-    @Size(max = 50)
-    private String lastName;
+    @NotBlank
+    @Size(min = 8, max = 100)
+    private String newPassword;
 }

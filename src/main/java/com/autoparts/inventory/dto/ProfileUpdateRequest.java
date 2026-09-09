@@ -10,6 +10,8 @@ import java.util.List;
 @Getter
 @Setter
 public class ProfileUpdateRequest {
+    private String firstName;
+    private String lastName;
     private String name;
     private String shopName;
     private String email;

@@ -1,6 +1,7 @@
 package com.autoparts.inventory.scheduler;
 
 import com.autoparts.inventory.repository.NotificationRepository;
+import com.autoparts.inventory.service.AccountService;
 import com.autoparts.inventory.store.AppKvStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,10 +19,12 @@ public class CleanupScheduler {
 
     private final NotificationRepository notifications;
     private final AppKvStore cache;
+    private final AccountService accounts;
 
-    public CleanupScheduler(NotificationRepository notifications, AppKvStore cache) {
+    public CleanupScheduler(NotificationRepository notifications, AppKvStore cache, AccountService accounts) {
         this.notifications = notifications;
         this.cache = cache;
+        this.accounts = accounts;
     }
 
     @Transactional
@@ -38,6 +41,15 @@ public class CleanupScheduler {
         int purged = cache.purgeAllExpired();
         if (purged > 0) {
             log.info("app_kv_store cleanup removed={}", purged);
+        }
+    }
+
+    /** Hard-delete accounts whose 30-day deletion grace period has elapsed. */
+    @Scheduled(cron = "${app.account-purge-cron:0 30 3 * * *}")
+    public void purgeAccountsPendingDeletion() {
+        int purged = accounts.purgeExpiredDeletions();
+        if (purged > 0) {
+            log.warn("account purge cron removed={} accounts", purged);
         }
     }
 }

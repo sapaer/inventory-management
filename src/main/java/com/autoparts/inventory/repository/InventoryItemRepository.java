@@ -2,6 +2,7 @@ package com.autoparts.inventory.repository;
 
 import com.autoparts.inventory.entity.InventoryItem;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -10,6 +11,12 @@ import java.util.UUID;
 
 public interface InventoryItemRepository extends JpaRepository<InventoryItem, UUID> {
     List<InventoryItem> findByUserIdAndActiveTrueOrderByUpdatedAtDesc(UUID userId);
+
+    List<InventoryItem> findByUserIdOrderByCreatedAtAsc(UUID userId);
+
+    @Modifying
+    @Query("delete from InventoryItem i where i.userId = :userId")
+    int deleteByUserId(@Param("userId") UUID userId);
 
     boolean existsByUserIdAndPartNameIgnoreCaseAndActiveTrue(UUID userId, String partName);
 

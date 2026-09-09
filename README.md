@@ -48,6 +48,13 @@ App log level: `logging.level.com.autoparts.inventory` — `DEBUG` in dev, `INFO
 `application-{profile}.yml`). Framework loggers (Hibernate, Spring, Tomcat, HikariCP) are held at `WARN` in
 `log4j2-spring.xml`.
 
+## Monitoring & alerting
+
+The app tracks 4xx / 5xx response spikes and OTP delivery failures in a rolling window and, on a
+threshold breach, logs `WARN MONITORING ALERT: …` and emails the on-call address (Gmail SMTP).
+Structured JSON logs can be shipped to Better Stack. Everything is off until its env vars are set.
+Setup + tunables: [`docs/monitoring-and-alerting.md`](docs/monitoring-and-alerting.md).
+
 On Windows PowerShell:
 
 ```powershell
@@ -70,7 +77,8 @@ mvn spring-boot:run
 | POST | `/api/v1/auth/accounts/select` | public (phoneToken) |
 | POST | `/api/v1/auth/accounts/switch` | Bearer |
 | POST | `/api/v1/auth/deactivate` | Bearer |
-| DELETE | `/api/v1/auth/account` | Bearer |
+| GET | `/api/v1/auth/account/export` | Bearer (CSV download) |
+| DELETE | `/api/v1/auth/account` | Bearer (soft delete, 30-day purge, revokes token) |
 
 OTP and refresh sessions are stored in Postgres (`app_kv_store`) after WhatsApp/SMS send succeeds. Failed send does not create a user.
 

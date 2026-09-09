@@ -2,22 +2,30 @@ package com.autoparts.inventory.controller;
 
 import com.autoparts.inventory.api.ApiEnvelope;
 import com.autoparts.inventory.api.AppException;
+import com.autoparts.inventory.dto.AccountDeletionResponse;
 import com.autoparts.inventory.dto.AccountSelectRequest;
 import com.autoparts.inventory.dto.AccountSummaryResponse;
 import com.autoparts.inventory.dto.AccountSwitchRequest;
 import com.autoparts.inventory.dto.AuthResponse;
 import com.autoparts.inventory.dto.AuthResult;
 import com.autoparts.inventory.dto.ChangePasswordRequest;
+import com.autoparts.inventory.dto.CreateAccountRequest;
+import com.autoparts.inventory.dto.ForgotPasswordRequest;
+import com.autoparts.inventory.dto.ForgotPasswordResetRequest;
 import com.autoparts.inventory.dto.OtpRequest;
 import com.autoparts.inventory.dto.OtpRequestedResponse;
 import com.autoparts.inventory.dto.OtpVerifyRequest;
+import com.autoparts.inventory.dto.PasswordLoginRequest;
 import com.autoparts.inventory.dto.ProfileUpdateRequest;
 import com.autoparts.inventory.dto.RefreshTokenRequest;
 import com.autoparts.inventory.dto.SetPasswordRequest;
 import com.autoparts.inventory.dto.TokenRefreshResponse;
 import com.autoparts.inventory.dto.UserResponse;
+import com.autoparts.inventory.service.AccountService;
 import com.autoparts.inventory.service.AuthService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,6 +36,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -37,9 +47,11 @@ import java.util.regex.Pattern;
 public class AuthController {
     private static final Pattern INDIAN_PHONE = Pattern.compile("^[6-9]\\d{9}$");
     private final AuthService authService;
+    private final AccountService accountService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, AccountService accountService) {
         this.authService = authService;
+        this.accountService = accountService;
     }
 
     @PostMapping("/otp/request")
@@ -52,7 +64,30 @@ public class AuthController {
     @PostMapping("/otp/verify")
     public ResponseEntity<ApiEnvelope<AuthResult>> verifyOtp(@Valid @RequestBody OtpVerifyRequest req) {
         validatePhone(req.getPhone());
-        return ResponseEntity.ok(ApiEnvelope.ok(authService.verifyOtp(req.getPhone(), req.getOtp())));
+        return ResponseEntity.ok(ApiEnvelope.ok(
+                authService.verifyOtp(req.getPhone(), req.getOtp(), req.getFirstName(), req.getLastName())));
+    }
+
+    @PostMapping("/password/login")
+    public ResponseEntity<ApiEnvelope<AuthResult>> passwordLogin(@Valid @RequestBody PasswordLoginRequest req) {
+        validatePhone(req.getPhone());
+        return ResponseEntity.ok(ApiEnvelope.ok(authService.passwordLogin(req.getPhone(), req.getPassword())));
+    }
+
+    @PostMapping("/password/forgot/request")
+    public ResponseEntity<ApiEnvelope<OtpRequestedResponse>> requestPasswordReset(
+            @Valid @RequestBody ForgotPasswordRequest req
+    ) {
+        validatePhone(req.getPhone());
+        authService.requestPasswordResetOtp(req.getPhone());
+        return ResponseEntity.ok(ApiEnvelope.ok(new OtpRequestedResponse("OTP sent", "300")));
+    }
+
+    @PostMapping("/password/forgot/reset")
+    public ResponseEntity<ApiEnvelope<Void>> resetPassword(@Valid @RequestBody ForgotPasswordResetRequest req) {
+        validatePhone(req.getPhone());
+        authService.resetPassword(req.getPhone(), req.getOtp(), req.getNewPassword());
+        return ResponseEntity.ok(ApiEnvelope.ok(null));
     }
 
     @PostMapping("/token/refresh")
@@ -98,8 +133,13 @@ public class AuthController {
     }
 
     @PostMapping("/accounts")
-    public ResponseEntity<ApiEnvelope<AuthResponse>> createAccount(@AuthenticationPrincipal UUID userId) {
-        return ResponseEntity.ok(ApiEnvelope.ok(authService.createAccount(userId)));
+    public ResponseEntity<ApiEnvelope<AuthResponse>> createAccount(
+            @AuthenticationPrincipal UUID userId,
+            @Valid @RequestBody(required = false) CreateAccountRequest req
+    ) {
+        String firstName = req == null ? null : req.getFirstName();
+        String lastName = req == null ? null : req.getLastName();
+        return ResponseEntity.ok(ApiEnvelope.ok(authService.createAccount(userId, firstName, lastName)));
     }
 
     @PostMapping("/password")
@@ -132,10 +172,19 @@ public class AuthController {
         return ResponseEntity.ok(ApiEnvelope.ok(null));
     }
 
+    @GetMapping("/account/export")
+    public ResponseEntity<String> exportAccountData(@AuthenticationPrincipal UUID userId) {
+        String csv = accountService.exportCsv(userId);
+        String filename = "account-export-" + LocalDate.now() + ".csv";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(csv);
+    }
+
     @DeleteMapping("/account")
-    public ResponseEntity<ApiEnvelope<Void>> deleteAccount(@AuthenticationPrincipal UUID userId) {
-        authService.deleteAccount(userId);
-        return ResponseEntity.ok(ApiEnvelope.ok(null));
+    public ResponseEntity<ApiEnvelope<AccountDeletionResponse>> deleteAccount(@AuthenticationPrincipal UUID userId) {
+        return ResponseEntity.ok(ApiEnvelope.ok(accountService.requestDeletion(userId)));
     }
 
     private static void validatePhone(String phone) {

@@ -1,5 +1,6 @@
 package com.autoparts.inventory.security;
 
+import com.autoparts.inventory.monitoring.AppEventMetrics;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +16,12 @@ import java.io.IOException;
 public class RequestLoggingFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(RequestLoggingFilter.class);
 
+    private final AppEventMetrics metrics;
+
+    public RequestLoggingFilter(AppEventMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
@@ -23,7 +30,9 @@ public class RequestLoggingFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
         } finally {
             long durationMs = System.currentTimeMillis() - start;
-            log.info("{} {} -> {} ({}ms)", request.getMethod(), request.getRequestURI(), response.getStatus(), durationMs);
+            int status = response.getStatus();
+            metrics.recordHttpStatus(status);
+            log.info("{} {} -> {} ({}ms)", request.getMethod(), request.getRequestURI(), status, durationMs);
         }
     }
 }

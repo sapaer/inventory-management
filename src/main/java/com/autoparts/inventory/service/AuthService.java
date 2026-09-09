@@ -2,6 +2,7 @@ package com.autoparts.inventory.service;
 
 import com.autoparts.inventory.api.AppException;
 import com.autoparts.inventory.config.AppProperties;
+import com.autoparts.inventory.config.RateLimitProperties;
 import com.autoparts.inventory.enums.AccountStatus;
 import com.autoparts.inventory.enums.OnboardingStatus;
 import com.autoparts.inventory.dto.AccountSelectionResponse;
@@ -16,7 +17,9 @@ import com.autoparts.inventory.entity.UserLocation;
 import com.autoparts.inventory.repository.UserLocationRepository;
 import com.autoparts.inventory.repository.UserRepository;
 import com.autoparts.inventory.security.JwtService;
+import com.autoparts.inventory.security.TokenRevocationService;
 import com.autoparts.inventory.store.AppKvStore;
+import com.autoparts.inventory.store.RateLimiter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -34,8 +37,6 @@ import java.util.UUID;
 public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
     private static final int OTP_EXPIRY_SECONDS = 300;
-    private static final int MAX_OTP_ATTEMPTS = 5;
-    private static final int ATTEMPT_WINDOW_SECONDS = 600;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final UserRepository users;
@@ -45,6 +46,9 @@ public class AuthService {
     private final OtpDispatcher otp;
     private final AppProperties props;
     private final PasswordEncoder passwordEncoder;
+    private final RateLimiter rateLimiter;
+    private final RateLimitProperties rateLimitProps;
+    private final TokenRevocationService revocations;
 
     public AuthService(
             UserRepository users,
@@ -53,7 +57,10 @@ public class AuthService {
             JwtService jwt,
             OtpDispatcher otp,
             AppProperties props,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            RateLimiter rateLimiter,
+            RateLimitProperties rateLimitProps,
+            TokenRevocationService revocations
     ) {
         this.users = users;
         this.locations = locations;
@@ -62,16 +69,22 @@ public class AuthService {
         this.otp = otp;
         this.props = props;
         this.passwordEncoder = passwordEncoder;
+        this.rateLimiter = rateLimiter;
+        this.rateLimitProps = rateLimitProps;
+        this.revocations = revocations;
+    }
+
+    private static String otpRequestKey(String phone) {
+        return "otp_attempts:" + phone;
+    }
+
+    private static String otpVerifyKey(String phone) {
+        return "otp_verify_attempts:" + phone;
     }
 
     public void requestOtp(String phone) {
-        String attemptsKey = "otp_attempts:" + phone;
-        String attempts = cache.get(attemptsKey);
-        if (attempts != null && !attempts.isBlank()) {
-            int n = Integer.parseInt(attempts);
-            if (n >= MAX_OTP_ATTEMPTS) {
-                throw AppException.tooManyRequests("OTP_MAX_ATTEMPTS", "Too many OTP requests. Try again in 10 minutes.");
-            }
+        if (rateLimiter.isExceeded(otpRequestKey(phone), rateLimitProps.getOtpRequestPerPhone())) {
+            throw AppException.tooManyRequests("OTP_MAX_ATTEMPTS", "Too many OTP requests. Try again in 10 minutes.");
         }
 
         boolean bypass = props.isDevOtpBypass();
@@ -90,8 +103,7 @@ public class AuthService {
         }
 
         cache.set("otp:" + phone, code, Duration.ofSeconds(OTP_EXPIRY_SECONDS));
-        cache.incr(attemptsKey);
-        cache.expire(attemptsKey, Duration.ofSeconds(ATTEMPT_WINDOW_SECONDS));
+        rateLimiter.hit(otpRequestKey(phone), Duration.ofSeconds(rateLimitProps.getOtpRequestWindowSeconds()));
         if (bypass) {
             log.warn("DEV OTP bypass active phone={} otp={} (delivery skipped)", phone, code);
         } else if (props.isLogOtp()) {
@@ -102,7 +114,7 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthResult verifyOtp(String phone, String submitted) {
+    public AuthResult verifyOtp(String phone, String submitted, String firstName, String lastName) {
         verifyOtpCodeOrThrow(phone, submitted);
 
         List<User> matches = users.findAllByPhone(phone);
@@ -111,7 +123,39 @@ public class AuthService {
             created.setPhone(phone);
             created.setVerified(true);
             created.setOnboardingStatus(OnboardingStatus.REGISTERED);
+            created.applyName(firstName, lastName);
             return tokens(users.save(created), true);
+        }
+        if (matches.size() > 1) {
+            String phoneToken = UUID.randomUUID().toString();
+            cache.set("phone_token:" + phoneToken, phone, Duration.ofSeconds(OTP_EXPIRY_SECONDS));
+            return new AccountSelectionResponse(phoneToken, matches.stream().map(this::toAccountSummary).toList());
+        }
+        return tokens(reactivateAndVerify(matches.get(0)), false);
+    }
+
+    /**
+     * Sign in with a phone + password instead of an OTP. Mirrors {@link #verifyOtp}
+     * for the multi-account and reactivation flows, but never creates an account —
+     * a fresh number must go through OTP signup first.
+     */
+    @Transactional
+    public AuthResult passwordLogin(String phone, String password) {
+        List<User> matches = users.findAllByPhone(phone);
+        if (matches.isEmpty()) {
+            throw AppException.unauthorized("No account found for this number. Sign up with OTP first.");
+        }
+        boolean anyHasPassword = matches.stream().anyMatch(u -> u.getPasswordHash() != null);
+        if (!anyHasPassword) {
+            throw AppException.badRequest(
+                    "PASSWORD_NOT_SET",
+                    "No password set for this number. Sign in with OTP, then add a password from Settings."
+            );
+        }
+        boolean ok = matches.stream()
+                .anyMatch(u -> u.getPasswordHash() != null && passwordEncoder.matches(password, u.getPasswordHash()));
+        if (!ok) {
+            throw AppException.unauthorized("Incorrect password.");
         }
         if (matches.size() > 1) {
             String phoneToken = UUID.randomUUID().toString();
@@ -126,17 +170,24 @@ public class AuthService {
                 && submitted != null
                 && submitted.equals(props.effectiveDevOtpCode());
         if (!bypassCode) {
+            if (rateLimiter.isExceeded(otpVerifyKey(phone), rateLimitProps.getOtpVerifyPerPhone())) {
+                throw AppException.tooManyRequests(
+                        "OTP_MAX_VERIFY_ATTEMPTS",
+                        "Too many incorrect OTP attempts. Request a new OTP and try again in 10 minutes."
+                );
+            }
             String stored = cache.get("otp:" + phone);
             if (stored == null || stored.isBlank()) {
                 throw AppException.badRequest("OTP_EXPIRED", "OTP has expired. Please request a new one.");
             }
             if (!stored.equals(submitted)) {
+                rateLimiter.hit(otpVerifyKey(phone), Duration.ofSeconds(rateLimitProps.getOtpVerifyWindowSeconds()));
                 throw AppException.badRequest("OTP_INVALID", "Incorrect OTP. Please try again.");
             }
         } else {
             log.warn("DEV OTP bypass accepted phone={}", phone);
         }
-        cache.delete("otp:" + phone, "otp_attempts:" + phone);
+        cache.delete("otp:" + phone, otpRequestKey(phone), otpVerifyKey(phone));
     }
 
     @Transactional
@@ -168,9 +219,47 @@ public class AuthService {
         log.info("password changed userId={}", userId);
     }
 
-    /** Re-verifying OTP proves phone ownership again, so it also reactivates a deactivated account. */
+    /**
+     * Step 1 of the forgot-password flow (unauthenticated): send an OTP to a number
+     * that already has an account. Fails the same way for an unknown number as for a
+     * known one to avoid leaking which numbers are registered.
+     */
+    public void requestPasswordResetOtp(String phone) {
+        List<User> matches = users.findAllByPhone(phone);
+        if (matches.isEmpty()) {
+            throw AppException.unauthorized("No account found for this number. Sign up with OTP first.");
+        }
+        requestOtp(phone);
+    }
+
+    /**
+     * Step 2 of the forgot-password flow (unauthenticated): with a valid OTP, set a new
+     * password on every account tied to the number. Mirrors {@link #passwordLogin} in
+     * treating the password as shared across a phone's accounts.
+     */
+    @Transactional
+    public void resetPassword(String phone, String otp, String newPassword) {
+        List<User> matches = users.findAllByPhone(phone);
+        if (matches.isEmpty()) {
+            throw AppException.unauthorized("No account found for this number. Sign up with OTP first.");
+        }
+        verifyOtpCodeOrThrow(phone, otp);
+        String hash = passwordEncoder.encode(newPassword);
+        for (User user : matches) {
+            user.setPasswordHash(hash);
+            users.save(user);
+            cache.delete("session:" + user.getId());
+        }
+        log.info("password reset via forgot-password phone={} accounts={}", phone, matches.size());
+    }
+
+    /**
+     * Re-verifying OTP (or a successful password login) proves the user still wants the account,
+     * so it reactivates a deactivated one and cancels a pending deletion.
+     */
     private User reactivateAndVerify(User user) {
         boolean dirty = false;
+        boolean statusRestored = false;
         if (!user.isVerified()) {
             user.setVerified(true);
             dirty = true;
@@ -179,7 +268,18 @@ public class AuthService {
             user.setStatus(AccountStatus.ACTIVE);
             user.setDeactivatedAt(null);
             dirty = true;
+            statusRestored = true;
             log.info("account reactivated userId={}", user.getId());
+        }
+        if (user.getStatus() == AccountStatus.PENDING_DELETION) {
+            user.setStatus(AccountStatus.ACTIVE);
+            user.setDeletionRequestedAt(null);
+            dirty = true;
+            statusRestored = true;
+            log.info("account deletion cancelled on login userId={}", user.getId());
+        }
+        if (statusRestored) {
+            revocations.restore(user.getId());
         }
         return dirty ? users.save(user) : user;
     }
@@ -214,17 +314,22 @@ public class AuthService {
         if (target.getStatus() == AccountStatus.DEACTIVATED) {
             throw AppException.conflict("ACCOUNT_DEACTIVATED", "This account is deactivated. Log in with OTP to reactivate it.");
         }
+        if (target.getStatus() == AccountStatus.PENDING_DELETION) {
+            throw AppException.conflict("ACCOUNT_PENDING_DELETION",
+                    "This account is scheduled for deletion. Log in with OTP to restore it.");
+        }
         log.info("account switched fromUserId={} toAccountId={}", currentUserId, targetAccountId);
         return tokens(target, false);
     }
 
     @Transactional
-    public AuthResponse createAccount(UUID currentUserId) {
+    public AuthResponse createAccount(UUID currentUserId, String firstName, String lastName) {
         User current = users.findById(currentUserId).orElseThrow(() -> AppException.notFound("User not found"));
         User created = new User();
         created.setPhone(current.getPhone());
         created.setVerified(true);
         created.setOnboardingStatus(OnboardingStatus.REGISTERED);
+        created.applyName(firstName, lastName);
         User saved = users.save(created);
         log.info("account created accountId={} phone={} fromUserId={}", saved.getId(), saved.getPhone(), currentUserId);
         return tokens(saved, true);
@@ -242,15 +347,8 @@ public class AuthService {
         user.setDeactivatedAt(Instant.now());
         users.save(user);
         cache.delete("session:" + userId);
+        revocations.revoke(userId);
         log.info("account deactivated userId={}", userId);
-    }
-
-    @Transactional
-    public void deleteAccount(UUID userId) {
-        User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
-        cache.delete("session:" + userId);
-        users.delete(user);
-        log.warn("account hard-deleted userId={}", userId);
     }
 
     public TokenRefreshResponse refreshToken(String refreshToken) {
@@ -290,7 +388,9 @@ public class AuthService {
     @Transactional
     public UserResponse updateProfile(UUID userId, ProfileUpdateRequest dto) {
         User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
-        if (dto.getName() != null) {
+        if (dto.getFirstName() != null || dto.getLastName() != null) {
+            user.applyName(dto.getFirstName(), dto.getLastName());
+        } else if (dto.getName() != null) {
             user.setName(dto.getName());
         }
         if (dto.getShopName() != null) {
@@ -318,12 +418,15 @@ public class AuthService {
         return new UserResponse(
                 user.getId(),
                 user.getPhone(),
+                user.getFirstName(),
+                user.getLastName(),
                 user.getName(),
                 user.getShopName(),
                 user.getEmail(),
                 user.getBusinessType(),
                 user.getOnboardingStatus(),
                 user.getStatus(),
+                user.getDeletionRequestedAt(),
                 loc == null ? null : loc.getAddress(),
                 loc == null ? null : loc.getArea(),
                 loc == null ? null : loc.getCity(),
