@@ -35,12 +35,10 @@ class InventoryServiceTest {
         return new InventoryService(items, users, notifier);
     }
 
-    private static CompatibleVehicle vehicle(String make, String model, Integer from, Integer to) {
+    private static CompatibleVehicle vehicle(String make, String model) {
         CompatibleVehicle v = new CompatibleVehicle();
         v.setMake(make);
         v.setModel(model);
-        v.setYearFrom(from);
-        v.setYearTo(to);
         return v;
     }
 
@@ -51,8 +49,8 @@ class InventoryServiceTest {
         req.setVehicleCategory(VehicleCategory.FOUR_WHEELER);
         req.setQuantity(5);
         req.setCompatibleVehicles(List.of(
-                vehicle("Maruti Suzuki", "Swift", 2011, 2017),
-                vehicle("Hyundai", "i20", 2014, null)));
+                vehicle("Maruti Suzuki", "Swift"),
+                vehicle("Hyundai", "i20")));
         when(items.save(any(InventoryItem.class))).thenAnswer(inv -> inv.getArgument(0));
         lenient().when(users.findById(USER)).thenReturn(Optional.empty());
 
@@ -60,7 +58,7 @@ class InventoryServiceTest {
 
         assertEquals(2, out.getCompatibleVehicles().size());
         assertEquals("Swift", out.getCompatibleVehicles().get(0).getModel());
-        assertEquals(2017, out.getCompatibleVehicles().get(0).getYearTo());
+        assertEquals("Hyundai", out.getCompatibleVehicles().get(1).getMake());
     }
 
     @Test
@@ -84,7 +82,7 @@ class InventoryServiceTest {
         existing.setUserId(USER);
         existing.setActive(true);
         existing.setPartName("Clutch Plate");
-        existing.setCompatibleVehicles(List.of(vehicle("Tata", "Nano", 2009, 2018)));
+        existing.setCompatibleVehicles(List.of(vehicle("Tata", "Nano")));
         when(items.findById(existing.getId())).thenReturn(Optional.of(existing));
         when(items.save(any(InventoryItem.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -95,8 +93,8 @@ class InventoryServiceTest {
 
         UpdatePartRequest replace = new UpdatePartRequest();
         replace.setCompatibleVehicles(List.of(
-                vehicle("Mahindra", "Bolero", 2011, null),
-                vehicle("Mahindra", "Scorpio", 2014, null)));
+                vehicle("Mahindra", "Bolero"),
+                vehicle("Mahindra", "Scorpio")));
         InventoryItemResponse afterReplace = svc().update(USER, existing.getId(), replace);
         assertEquals(2, afterReplace.getCompatibleVehicles().size());
         assertEquals("Bolero", afterReplace.getCompatibleVehicles().get(0).getModel());
