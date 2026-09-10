@@ -1,6 +1,8 @@
 package com.autoparts.inventory.dto;
 
 import com.autoparts.inventory.enums.VehicleCategory;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -21,4 +23,9 @@ public class UpdatePartRequest {
     private BigDecimal sellingPrice;
     private BigDecimal costPrice;
     private List<String> images;
+
+    /** When non-null, replaces the whole compatible-vehicles list. */
+    @Valid
+    @Size(max = 50)
+    private List<CompatibleVehicle> compatibleVehicles;
 }

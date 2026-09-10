@@ -113,7 +113,7 @@ Request body:
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/v1/inventory` | `q`, `vehicle`, `status` query params |
-| POST | `/api/v1/inventory` | add part |
+| POST | `/api/v1/inventory` | add part (incl. `compatibleVehicles[]`) |
 | GET | `/api/v1/inventory/{id}` | |
 | PUT | `/api/v1/inventory/{id}` | |
 | DELETE | `/api/v1/inventory/{id}` | soft delete |

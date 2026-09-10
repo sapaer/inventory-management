@@ -77,6 +77,7 @@ public class InventoryService {
         item.setSellingPrice(req.getSellingPrice());
         item.setCostPrice(req.getCostPrice());
         item.setImages(req.getImages() == null ? List.of() : req.getImages());
+        item.setCompatibleVehicles(req.getCompatibleVehicles() == null ? List.of() : req.getCompatibleVehicles());
         item.setActive(true);
         InventoryItem saved = items.save(item);
         log.info("part added userId={} itemId={} partName={} qty={} duplicate={}", userId, saved.getId(), saved.getPartName(), qty, dup);
@@ -107,6 +108,7 @@ public class InventoryService {
         if (req.getSellingPrice() != null) item.setSellingPrice(req.getSellingPrice());
         if (req.getCostPrice() != null) item.setCostPrice(req.getCostPrice());
         if (req.getImages() != null) item.setImages(req.getImages());
+        if (req.getCompatibleVehicles() != null) item.setCompatibleVehicles(req.getCompatibleVehicles());
         return toResponse(items.save(item), null);
     }
 
@@ -175,6 +177,7 @@ public class InventoryService {
                 item.getMinQuantity(),
                 item.getSellingPrice(),
                 item.getImages() == null ? List.of() : item.getImages(),
+                item.getCompatibleVehicles() == null ? List.of() : item.getCompatibleVehicles(),
                 item.stockStatus(),
                 item.isActive(),
                 dup,

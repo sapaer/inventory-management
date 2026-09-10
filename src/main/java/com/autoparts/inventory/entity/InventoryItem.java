@@ -1,5 +1,6 @@
 package com.autoparts.inventory.entity;
 
+import com.autoparts.inventory.dto.CompatibleVehicle;
 import com.autoparts.inventory.enums.VehicleCategory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -63,6 +64,10 @@ public class InventoryItem {
     @Column(nullable = false, columnDefinition = "json")
     private List<String> images = new ArrayList<>();
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "compatible_vehicles", nullable = false, columnDefinition = "json")
+    private List<CompatibleVehicle> compatibleVehicles = new ArrayList<>();
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
 
@@ -92,6 +97,9 @@ public class InventoryItem {
         updatedAt = now;
         if (images == null) {
             images = new ArrayList<>();
+        }
+        if (compatibleVehicles == null) {
+            compatibleVehicles = new ArrayList<>();
         }
     }
 

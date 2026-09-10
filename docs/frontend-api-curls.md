@@ -323,10 +323,15 @@ curl.exe -sS "http://localhost:8080/api/v1/inventory?q=Brake&vehicle=FOUR_WHEELE
 curl.exe -sS -X POST http://localhost:8080/api/v1/inventory ^
   -H "Authorization: Bearer ACCESS_TOKEN" ^
   -H "Content-Type: application/json" ^
-  -d "{\"partName\":\"Brake Pad\",\"localName\":\"Brake Shoe\",\"specification\":\"Front\",\"description\":\"Ceramic\",\"vehicleCategory\":\"FOUR_WHEELER\",\"brand\":\"Bosch\",\"model\":\"Swift\",\"quantity\":5,\"minQuantity\":2,\"sellingPrice\":450.50,\"costPrice\":300,\"images\":[]}"
+  -d "{\"partName\":\"Brake Pad\",\"localName\":\"Brake Shoe\",\"specification\":\"Front\",\"description\":\"Ceramic\",\"vehicleCategory\":\"FOUR_WHEELER\",\"brand\":\"Bosch\",\"model\":\"Swift\",\"quantity\":5,\"minQuantity\":2,\"sellingPrice\":450.50,\"costPrice\":300,\"images\":[],\"compatibleVehicles\":[{\"make\":\"Maruti Suzuki\",\"model\":\"Swift\",\"variant\":\"VDI\",\"yearFrom\":2011,\"yearTo\":2017},{\"make\":\"Maruti Suzuki\",\"model\":\"Dzire\",\"yearFrom\":2012}]}"
 ```
 
 Success `201`. Required: `partName`, `vehicleCategory`, `quantity`. Max 3 `images`.
+
+`compatibleVehicles` is the list of vehicles the part fits (optional, defaults to `[]`, max 50).
+Each entry: `make` (required, ≤60), `model` (≤60), `variant` (≤40), `yearFrom` / `yearTo`
+(1950–2100). It is echoed back on every part response and replaced wholesale by
+`PUT /inventory/{id}` when that body includes `compatibleVehicles`.
 
 Negatives:
 
