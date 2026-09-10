@@ -26,6 +26,11 @@
              (javac stopped auto-running annotation processors from JDK 23 on;
              Lombok only fixed this in 1.18.40). Override for JDK 23+ hosts. -->
         <lombok.version>1.18.46</lombok.version>
+        <!-- Spring Boot 3.3.2 pins Mockito 5.11 / Byte Buddy 1.14, which cannot
+             instrument classes on JDK 24+. Bump for JDK 25/26 dev hosts; test-scope
+             only, so the JDK 17 Docker build is unaffected. -->
+        <mockito.version>5.23.0</mockito.version>
+        <byte-buddy.version>1.18.13</byte-buddy.version>
     </properties>
 
     <dependencies>
@@ -161,6 +166,23 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <!-- JDK 23+ no longer runs annotation processors unless they're
+                         explicitly on the processor path, which broke Lombok on newer
+                         JDKs. Declaring it here fixes the build on JDK 23-26 and is a
+                         no-op on the JDK 17 Docker image. -->
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
