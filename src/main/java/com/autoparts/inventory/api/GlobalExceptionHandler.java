@@ -1,5 +1,6 @@
 package com.autoparts.inventory.api;
 
+import com.autoparts.inventory.monitoring.AppEventMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
@@ -20,8 +21,18 @@ import java.sql.SQLException;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private final AppEventMetrics metrics;
+
+    public GlobalExceptionHandler(AppEventMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     @ExceptionHandler(AppException.class)
     public ResponseEntity<ApiEnvelope<Void>> handleApp(AppException ex) {
+        if ("OTP_DELIVERY_FAILED".equals(ex.getCode())) {
+            metrics.recordOtpDeliveryFailure();
+            log.error("otp delivery failed: {}", ex.getMessage());
+        }
         return ResponseEntity.status(ex.getStatus())
                 .body(ApiEnvelope.error(ex.getCode(), ex.getMessage()));
     }

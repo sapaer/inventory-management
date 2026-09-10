@@ -59,7 +59,7 @@ public class NotificationService {
         boolean whatsappSent = false;
         boolean smsSent = false;
         try {
-            if (whatsapp.configured()) {
+            if (user.isWhatsappAlertsEnabled() && whatsapp.configured()) {
                 whatsapp.sendLowStockAlert(user.getPhone(), item.getPartName(), item.getQuantity());
                 whatsappSent = true;
             }

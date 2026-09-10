@@ -14,4 +14,11 @@ public class OtpVerifyRequest {
     @NotBlank
     @Size(min = 6, max = 6)
     private String otp;
+
+    /** Optional — captured only when this OTP verification creates a new account. */
+    @Size(max = 50)
+    private String firstName;
+
+    @Size(max = 50)
+    private String lastName;
 }

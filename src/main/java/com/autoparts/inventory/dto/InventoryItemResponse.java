@@ -27,6 +27,7 @@ public class InventoryItemResponse {
     private final int minQuantity;
     private final BigDecimal sellingPrice;
     private final List<String> images;
+    private final List<CompatibleVehicle> compatibleVehicles;
     private final String stockStatus;
 
     @JsonProperty("isActive")

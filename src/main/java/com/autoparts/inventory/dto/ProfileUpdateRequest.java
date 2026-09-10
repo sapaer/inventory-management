@@ -10,6 +10,8 @@ import java.util.List;
 @Getter
 @Setter
 public class ProfileUpdateRequest {
+    private String firstName;
+    private String lastName;
     private String name;
     private String shopName;
     private String email;
@@ -22,4 +24,9 @@ public class ProfileUpdateRequest {
     private Double geoLat;
     private Double geoLng;
     private List<VehicleCategory> vehicleCategories;
+    private Boolean whatsappAlertsEnabled;
+    private String photoUrl;
+    private String shopPhotoUrl;
+    private String gstin;
+    private String altPhone;
 }

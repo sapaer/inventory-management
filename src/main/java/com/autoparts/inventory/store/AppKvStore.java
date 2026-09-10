@@ -102,6 +102,15 @@ public class AppKvStore {
 
     public boolean exists(String key) {
         purgeExpired(key);
+        return existsActive(key);
+    }
+
+    /**
+     * Read-only existence check — no expired-row purge write, so it is safe to call on
+     * every request. Expired rows are already excluded by the {@code expires_at} predicate;
+     * the {@code purgeAllExpired} cron reclaims their storage.
+     */
+    public boolean existsActive(String key) {
         Integer n = jdbc.queryForObject(
                 "SELECT COUNT(1) FROM app_kv_store WHERE key = ? AND (expires_at IS NULL OR expires_at > now())",
                 Integer.class,

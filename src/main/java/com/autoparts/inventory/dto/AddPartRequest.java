@@ -1,6 +1,7 @@
 package com.autoparts.inventory.dto;
 
 import com.autoparts.inventory.enums.VehicleCategory;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -36,4 +37,9 @@ public class AddPartRequest {
 
     @Size(max = 3)
     private List<String> images;
+
+    /** Vehicles this part fits. Optional; defaults to an empty list. */
+    @Valid
+    @Size(max = 50)
+    private List<CompatibleVehicle> compatibleVehicles;
 }
