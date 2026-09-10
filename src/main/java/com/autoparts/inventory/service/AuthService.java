@@ -206,17 +206,20 @@ public class AuthService {
         requestOtp(user.getPhone());
     }
 
+    /**
+     * OTP-verified password set. Works whether or not a password already exists —
+     * the first-time "create password" flow and the "change password" flow both
+     * land here so both are gated by an OTP to the registered number.
+     */
     @Transactional
     public void changePassword(UUID userId, String otp, String newPassword) {
         User user = users.findById(userId).orElseThrow(() -> AppException.notFound("User not found"));
-        if (user.getPasswordHash() == null) {
-            throw AppException.badRequest("PASSWORD_NOT_SET", "No password set yet. Add one first.");
-        }
+        boolean firstTime = user.getPasswordHash() == null;
         verifyOtpCodeOrThrow(user.getPhone(), otp);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         users.save(user);
         cache.delete("session:" + userId);
-        log.info("password changed userId={}", userId);
+        log.info("password {} userId={}", firstTime ? "created" : "changed", userId);
     }
 
     /**
@@ -406,6 +409,21 @@ public class AuthService {
         if (dto.getVehicleCategories() != null) {
             user.setVehicleCategories(dto.getVehicleCategories());
         }
+        if (dto.getWhatsappAlertsEnabled() != null) {
+            user.setWhatsappAlertsEnabled(dto.getWhatsappAlertsEnabled());
+        }
+        if (dto.getPhotoUrl() != null) {
+            user.setPhotoUrl(dto.getPhotoUrl().isBlank() ? null : dto.getPhotoUrl());
+        }
+        if (dto.getShopPhotoUrl() != null) {
+            user.setShopPhotoUrl(dto.getShopPhotoUrl().isBlank() ? null : dto.getShopPhotoUrl());
+        }
+        if (dto.getGstin() != null) {
+            user.setGstin(dto.getGstin().isBlank() ? null : dto.getGstin().trim().toUpperCase());
+        }
+        if (dto.getAltPhone() != null) {
+            user.setAltPhone(dto.getAltPhone().isBlank() ? null : dto.getAltPhone().trim());
+        }
         if (user.getOnboardingStatus() == OnboardingStatus.REGISTERED
                 && user.getName() != null && user.getShopName() != null) {
             user.setOnboardingStatus(OnboardingStatus.PROFILED);
@@ -435,7 +453,12 @@ public class AuthService {
                 loc == null ? null : loc.getGeoLat(),
                 loc == null ? null : loc.getGeoLng(),
                 user.getVehicleCategories(),
-                user.getPasswordHash() != null
+                user.getPasswordHash() != null,
+                user.isWhatsappAlertsEnabled(),
+                user.getPhotoUrl(),
+                user.getShopPhotoUrl(),
+                user.getGstin(),
+                user.getAltPhone()
         );
     }
 

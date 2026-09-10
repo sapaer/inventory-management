@@ -73,6 +73,26 @@ public class User {
     @Column(name = "password_hash")
     private String passwordHash;
 
+    /** When false, the low-stock scheduler skips the WhatsApp message for this account. */
+    @Column(name = "whatsapp_alerts_enabled", nullable = false)
+    private boolean whatsappAlertsEnabled = true;
+
+    /** Public URL of an uploaded profile photo. */
+    @Column(name = "photo_url")
+    private String photoUrl;
+
+    /** Public URL of an uploaded shop / storefront photo. */
+    @Column(name = "shop_photo_url")
+    private String shopPhotoUrl;
+
+    /** Shop's GST registration number (shop-specific, optional). */
+    @Column(name = "gstin", length = 20)
+    private String gstin;
+
+    /** Optional secondary contact number (landline / alternate mobile). */
+    @Column(name = "alt_phone", length = 15)
+    private String altPhone;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "vehicle_categories", nullable = false, columnDefinition = "json")
     private List<VehicleCategory> vehicleCategories = new ArrayList<>();

@@ -40,4 +40,12 @@ public class UserResponse {
 
     /** Never the hash itself — just whether one is set, so the UI can offer "set" vs "change". */
     private final boolean hasPassword;
+
+    /** Whether WhatsApp low-stock alerts are on for this account. */
+    private final boolean whatsappAlertsEnabled;
+
+    private final String photoUrl;
+    private final String shopPhotoUrl;
+    private final String gstin;
+    private final String altPhone;
 }

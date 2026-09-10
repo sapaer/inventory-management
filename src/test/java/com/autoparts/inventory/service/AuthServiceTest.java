@@ -265,4 +265,26 @@ class AuthServiceTest {
         verify(cache, never()).get("otp:8619544044");
         verify(users, never()).findAllByPhone(anyString());
     }
+
+    @Test
+    void changePasswordSetsFirstPasswordWithValidOtp() {
+        com.autoparts.inventory.entity.User u = user("8619544044", null);
+        org.mockito.Mockito.when(users.findById(u.getId())).thenReturn(java.util.Optional.of(u));
+
+        newSvc(true).changePassword(u.getId(), "000000", "brand-new-pass");
+
+        org.junit.jupiter.api.Assertions.assertTrue(passwordEncoder.matches("brand-new-pass", u.getPasswordHash()));
+        verify(users).save(u);
+    }
+
+    @Test
+    void changePasswordUpdatesExistingPasswordWithValidOtp() {
+        com.autoparts.inventory.entity.User u = user("8619544044", passwordEncoder.encode("old-pass"));
+        org.mockito.Mockito.when(users.findById(u.getId())).thenReturn(java.util.Optional.of(u));
+
+        newSvc(true).changePassword(u.getId(), "000000", "fresh-pass-99");
+
+        org.junit.jupiter.api.Assertions.assertTrue(passwordEncoder.matches("fresh-pass-99", u.getPasswordHash()));
+        verify(users).save(u);
+    }
 }
