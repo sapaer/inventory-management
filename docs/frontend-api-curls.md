@@ -440,7 +440,7 @@ Success (when AWS is set): `{ "upload_url", "public_url", "key", "filename" }`. 
 | 400 | `VALIDATION_ERROR` | Bad phone, missing fields, invalid JSON/enum |
 | 400 | `OTP_EXPIRED` | No OTP in Redis |
 | 400 | `OTP_INVALID` | Wrong OTP |
-| 400 | `OTP_DELIVERY_FAILED` | WhatsApp/SMS send failed |
+| 400 | `OTP_DELIVERY_FAILED` | SMS/WhatsApp send failed |
 | 400 | `PASSWORD_NOT_SET` | Password login/change on a number with no password |
 | 409 | `PASSWORD_ALREADY_SET` | `POST /password` when one already exists |
 | 409 | `ACCOUNT_PENDING_DELETION` | `switch` to an account scheduled for deletion |

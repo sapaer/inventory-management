@@ -86,9 +86,9 @@ mvn spring-boot:run
 | GET | `/api/v1/auth/account/export` | Bearer (CSV download) |
 | DELETE | `/api/v1/auth/account` | Bearer (soft delete, 30-day purge, revokes token) |
 
-OTP and refresh sessions are stored in Postgres (`app_kv_store`) after WhatsApp/SMS send succeeds. Failed send does not create a user.
+OTP and refresh sessions are stored in Postgres (`app_kv_store`) after SMS/WhatsApp send succeeds. Failed send does not create a user.
 
-Delivery order: **Twilio WhatsApp**, then **Twilio SMS**. Meta Cloud API and MSG91 remain fallbacks if Twilio is not configured.
+Delivery order: **Twilio SMS**, then **Twilio WhatsApp**. Meta Cloud API and MSG91 remain fallbacks if Twilio is not configured.
 
 ## Twilio (SMS + WhatsApp)
 
