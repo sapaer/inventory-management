@@ -56,6 +56,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/password/login",
                                 "/api/v1/auth/password/forgot/request",
                                 "/api/v1/auth/password/forgot/reset").permitAll()
+                        // Twilio can't send a Bearer token; TwilioSignatureValidator authenticates these instead.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/voice/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint((req, res, e) -> writeUnauthorized(res)))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)

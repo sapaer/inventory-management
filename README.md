@@ -55,6 +55,12 @@ threshold breach, logs `WARN MONITORING ALERT: …` and emails the on-call addre
 Structured JSON logs can be shipped to Better Stack. Everything is off until its env vars are set.
 Setup + tunables: [`docs/monitoring-and-alerting.md`](docs/monitoring-and-alerting.md).
 
+## Support line
+
+One published Twilio number rings every co-founder at once, falling back to a recorded
+voicemail (with an SMS/WhatsApp notification) if nobody answers. Off until `SUPPORT_LINE_ENABLED`
+and `SUPPORT_LINE_NUMBERS` are set. Setup: [`docs/support-line.md`](docs/support-line.md).
+
 On Windows PowerShell:
 
 ```powershell
