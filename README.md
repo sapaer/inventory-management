@@ -55,6 +55,12 @@ threshold breach, logs `WARN MONITORING ALERT: …` and emails the on-call addre
 Structured JSON logs can be shipped to Better Stack. Everything is off until its env vars are set.
 Setup + tunables: [`docs/monitoring-and-alerting.md`](docs/monitoring-and-alerting.md).
 
+## Support line
+
+One published Twilio number rings every co-founder at once, falling back to a recorded
+voicemail (with an SMS/WhatsApp notification) if nobody answers. Off until `SUPPORT_LINE_ENABLED`
+and `SUPPORT_LINE_NUMBERS` are set. Setup: [`docs/support-line.md`](docs/support-line.md).
+
 On Windows PowerShell:
 
 ```powershell
@@ -80,9 +86,9 @@ mvn spring-boot:run
 | GET | `/api/v1/auth/account/export` | Bearer (CSV download) |
 | DELETE | `/api/v1/auth/account` | Bearer (soft delete, 30-day purge, revokes token) |
 
-OTP and refresh sessions are stored in Postgres (`app_kv_store`) after WhatsApp/SMS send succeeds. Failed send does not create a user.
+OTP and refresh sessions are stored in Postgres (`app_kv_store`) after SMS/WhatsApp send succeeds. Failed send does not create a user.
 
-Delivery order: **Twilio WhatsApp**, then **Twilio SMS**. Meta Cloud API and MSG91 remain fallbacks if Twilio is not configured.
+Delivery order: **Twilio SMS**, then **Twilio WhatsApp**. Meta Cloud API and MSG91 remain fallbacks if Twilio is not configured.
 
 ## Twilio (SMS + WhatsApp)
 

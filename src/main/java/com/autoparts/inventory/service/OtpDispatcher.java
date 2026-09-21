@@ -18,20 +18,20 @@ public class OtpDispatcher {
     }
 
     public void sendOtp(String phone, String otp) {
-        if (whatsapp.configured()) {
+        if (sms.configured()) {
             try {
-                whatsapp.sendOtp(phone, otp);
-                log.info("otp delivered via whatsapp phone={}", phone);
+                sms.sendOtp(phone, otp);
+                log.info("otp delivered via sms phone={}", phone);
                 return;
             } catch (Exception ex) {
-                log.error("whatsapp otp failed, falling back to sms phone={}", phone, ex);
+                log.error("sms otp failed, falling back to whatsapp phone={}", phone, ex);
             }
         } else {
-            log.warn("whatsapp not configured, trying sms");
+            log.warn("sms not configured, trying whatsapp");
         }
-        if (sms.configured()) {
-            sms.sendOtp(phone, otp);
-            log.info("otp delivered via sms phone={}", phone);
+        if (whatsapp.configured()) {
+            whatsapp.sendOtp(phone, otp);
+            log.info("otp delivered via whatsapp phone={}", phone);
             return;
         }
         throw new IllegalStateException("no otp delivery channel available");

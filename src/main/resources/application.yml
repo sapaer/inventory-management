@@ -52,6 +52,14 @@ app:
     alert-cooldown-minutes: ${MONITORING_ALERT_COOLDOWN_MINUTES:30}
     alert-to: ${MONITORING_ALERT_TO:#{null}}
     alert-from: ${MONITORING_ALERT_FROM:#{null}}
+  support-line:
+    # One published Twilio number rings every co-founder at once. See
+    # docs/support-line.md for Twilio console setup. Off until enabled + numbers are set.
+    enabled: ${SUPPORT_LINE_ENABLED:false}
+    numbers: ${SUPPORT_LINE_NUMBERS:}
+    ring-timeout-seconds: ${SUPPORT_LINE_RING_TIMEOUT_SECONDS:20}
+    voicemail-enabled: ${SUPPORT_LINE_VOICEMAIL_ENABLED:true}
+    voicemail-max-length-seconds: ${SUPPORT_LINE_VOICEMAIL_MAX_LENGTH_SECONDS:120}
   rate-limit:
     enabled: ${RATE_LIMIT_ENABLED:true}
     ip-requests-per-minute: ${RATE_LIMIT_IP_PER_MIN:120}
